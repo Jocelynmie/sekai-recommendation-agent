@@ -1,0 +1,34 @@
+{
+  "users": {
+    "total": 74,
+    "unique_tags": 609,
+    "top_tags": {
+      "romance": 48,
+      "naruto": 41,
+      "girlfriend": 38,
+      "anime": 33,
+      "my hero academia": 32,
+      "reverse harem": 29,
+      "supernatural": 27,
+      "demon slayer": 26,
+      "love triangle": 25,
+      "harem": 25
+    }
+  },
+  "contents": {
+    "total": 216,
+    "columns": [
+      "content_id",
+      "title",
+      "intro",
+      "character_list",
+      "initial_record"
+    ]
+  },
+  "interactions": {
+    "total": 393,
+    "unique_users": 62,
+    "unique_contents": 204,
+    "avg_interaction_count": 83.42493638676845
+  }
+}
