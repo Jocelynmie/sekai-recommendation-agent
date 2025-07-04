@@ -1,75 +1,185 @@
 # Sekai Content Analysis Report
 
-## 1. 数据概览
+## 1. Data Overview
 
-- **内容总数**: 216 个故事
-- **用户总数**: 74 个用户
-- **内容类型**: 角色扮演故事（Role-play stories）
+- **Total Content**: 524 stories (from `contents.csv`)
+- **Total Users**: 74 users (from `users.csv`)
+- **Total Interactions**: 392 interaction records (from `interactions.csv`)
+- **Content Type**: Role-play stories featuring anime/manga characters and scenarios
 
-## 2. 内容特征分析
+## 2. Content Feature Analysis
 
-### 2.1 文本特征
+### 2.1 Text Characteristics
 
-- **标题长度**: 平均 27.7 字符，范围 6-43 字符
-- **简介长度**: 平均 215.1 字符，范围 36-454 字符
-- **内容风格**: 短小精悍，直接表达核心概念
+Based on the content data analysis:
 
-### 2.2 内容主题分析
+- **Title Length**: Average 27.7 characters, range 6-43 characters
+- **Introduction Length**: Average 215.1 characters, range 36-454 characters
+- **Content Style**: Concise, direct expression of core concepts
+- **Character Lists**: Most stories feature 1-8 named characters
 
-从示例内容可以看出：
+### 2.2 Content Theme Analysis
 
-1. **热门 IP 相关**:
+From the code implementation in `MultiViewRecall._extract_tags_from_text()`:
 
-   - My Hero Academia (UA High, Class 1-A, Bakugo, Ochako, Aizawa)
-   - 角色扮演场景 (transfer student, girlfriend scenarios)
+#### Popular IP Categories:
 
-2. **情感类型**:
+- **Anime/Manga IPs**: My Hero Academia, Naruto, One Piece, Demon Slayer, Jujutsu Kaisen
+- **Gaming IPs**: Genshin Impact, Pokemon, Dragon Ball, Bleach
+- **K-pop**: BTS, Stray Kids, Blackpink
 
-   - 浪漫关系 (girlfriends, attention seeking)
-   - 冲突场景 (fight, want me dead)
-   - 日常校园 (math class, social web)
+#### Content Themes:
 
-3. **角色类型**:
-   - 学生角色 (transfer student, class members)
-   - 情侣关系 (girlfriends, romantic scenarios)
-   - 师生关系 (Aizawa teaching)
+- **Romance Types**: Romance, love triangle, reverse harem, harem, forbidden love
+- **Character Dynamics**: Tsundere, yandere, kuudere, protective, obsessive
+- **Settings**: School, supernatural, magic, superpower, office, mafia
+- **Relationships**: Childhood friends, enemies to lovers, fake relationship, slow burn
 
-## 3. 用户偏好分析
+#### Character Archetypes:
 
-### 3.1 用户标签特征
+- **Student Roles**: Transfer students, class members, teachers
+- **Romantic Scenarios**: Girlfriends, boyfriends, arranged marriages
+- **Power Dynamics**: Mafia bosses, CEOs, dominant/submissive relationships
 
-- 用户通过标签表达兴趣偏好
-- 标签包含 IP 名称、情感类型、角色类型等
+## 3. User Preference Analysis
 
-### 3.2 推荐挑战
+### 3.1 User Tag Characteristics
 
-1. **冷启动问题**: 新用户缺乏历史交互
-2. **长尾内容**: 小众 IP 或特殊主题的内容推荐
-3. **个性化**: 需要理解用户的具体偏好
+From `users.csv` analysis:
 
-## 4. 推荐策略优化建议
+- **Tag Diversity**: Users have 10-50+ interest tags each
+- **IP Preferences**: Most users follow multiple anime/manga IPs
+- **Genre Mix**: Combination of romance, action, supernatural, and slice-of-life
+- **Character Types**: Strong preference for specific character archetypes (tsundere, yandere, etc.)
 
-### 4.1 内容理解层面
+### 3.2 Recommendation Challenges
 
-1. **IP 识别**: 准确识别故事中的 IP 元素
-2. **情感分类**: 识别故事的情感基调
-3. **角色分析**: 理解故事中的角色关系
+1. **Cold Start Problem**: New users lack historical interaction data
+2. **Long Tail Content**: Niche IP or special theme content recommendations
+3. **Personalization**: Need to understand user's specific preferences
+4. **Multi-modal Matching**: Balancing IP relevance, character types, and themes
 
-### 4.2 用户理解层面
+## 4. Recommendation Strategy Analysis
 
-1. **标签权重**: 不同标签的重要性不同
-2. **兴趣演化**: 用户兴趣可能随时间变化
-3. **多样性平衡**: 在相关性和多样性间平衡
+### 4.1 Multi-View Recall System
 
-### 4.3 技术优化层面
+Based on `MultiViewRecall` implementation:
 
-1. **多模态理解**: 结合标题和简介信息
-2. **上下文感知**: 考虑用户的历史偏好
-3. **实时更新**: 根据用户反馈调整推荐
+#### 4.1.1 Tag-Based Matching
 
-## 5. 下一步行动计划
+- **Precise Tag Matching**: Direct overlap between user tags and content tags
+- **Semantic Tag Search**: Using sentence transformers for semantic similarity
+- **Tag Extraction**: 100+ predefined tags covering IPs, themes, and character types
 
-1. **深度内容分析**: 提取更多内容特征
-2. **用户画像构建**: 建立更精确的用户模型
-3. **推荐算法优化**: 基于内容理解改进算法
-4. **A/B 测试**: 验证改进效果
+#### 4.1.2 Vector-Based Recall
+
+- **Embedding Model**: `all-MiniLM-L6-v2` for content encoding
+- **Text Processing**: Combines title and introduction for embedding
+- **Similarity Search**: Cosine similarity between user tags and content embeddings
+
+#### 4.1.3 Popularity-Based Fallback
+
+- **Interaction Count**: Based on `interactions.csv` data
+- **Fallback Strategy**: Used when other methods don't provide enough candidates
+- **Random Selection**: For new content without interaction history
+
+### 4.2 Recommendation Agent Features
+
+From `RecommendationAgent` implementation:
+
+#### 4.2.1 Prompt Optimization
+
+- **Template Evolution**: Optimized prompts based on evaluation feedback
+- **Simple Rerank**: Cost-effective template for LLM reranking
+- **Context Window**: 8192 tokens maximum for model input
+
+#### 4.2.2 Fusion Strategies
+
+- **Tag Weight**: 0.1 default weight for tag overlap scoring
+- **Cold Start Boost**: 0.2 boost for popular tags like "blue lock", "k-pop idols"
+- **Multi-stage Ranking**: Vector recall → LLM rerank → final selection
+
+#### 4.2.3 Performance Metrics
+
+- **Current Performance**: Mean precision 0.492, mean recall 0.492
+- **Focus Areas**: Cold-start recommendations, diversity improvement
+
+## 5. Technical Implementation Details
+
+### 5.1 Content Processing Pipeline
+
+1. **Data Loading**: CSV files for contents, users, and interactions
+2. **Tag Extraction**: Rule-based extraction from titles and introductions
+3. **Embedding Generation**: Sentence transformer for semantic understanding
+4. **Index Building**: FAISS for efficient similarity search
+
+### 5.2 Recommendation Flow
+
+1. **User Input**: List of interest tags
+2. **Multi-View Recall**: Tag matching + semantic search + popularity
+3. **Candidate Scoring**: Tag overlap + embedding similarity + popularity
+4. **LLM Reranking**: Final selection using optimized prompts
+5. **Output**: Ranked list of content IDs
+
+### 5.3 Evaluation Framework
+
+- **Metrics**: Precision@k, Recall@k, Diversity
+- **Test Users**: Rolling window of recent 30 users
+- **A/B Testing**: Different fusion weights and prompt templates
+
+## 6. Performance Optimization Strategies
+
+### 6.1 Cost Reduction
+
+- **Vector-Only Mode**: Skip LLM for cost-sensitive scenarios
+- **Simple Rerank**: Shorter prompts for LLM calls
+- **Caching**: Embedding and tag extraction caching
+
+### 6.2 Quality Improvement
+
+- **Prompt Evolution**: Continuous optimization based on feedback
+- **Fusion Weight Tuning**: Balancing different recall methods
+- **Cold Start Handling**: Special handling for new users
+
+### 6.3 Scalability
+
+- **FAISS Index**: Efficient similarity search for large content sets
+- **Batch Processing**: Parallel processing for multiple users
+- **Modular Design**: Separate components for different recall strategies
+
+## 7. Future Development Plans
+
+### 7.1 Content Understanding Enhancement
+
+1. **Deep Content Analysis**: Extract more content features
+2. **Character Relationship Modeling**: Understand character dynamics
+3. **Emotion Classification**: Identify story emotional tones
+
+### 7.2 User Modeling Improvement
+
+1. **User Profile Construction**: Build more precise user models
+2. **Interest Evolution**: Track user preference changes over time
+3. **Diversity Balance**: Optimize relevance vs. diversity trade-offs
+
+### 7.3 Algorithm Optimization
+
+1. **Multi-modal Understanding**: Combine text and metadata information
+2. **Context Awareness**: Consider user historical preferences
+3. **Real-time Updates**: Adjust recommendations based on user feedback
+
+### 7.4 Evaluation and Testing
+
+1. **A/B Testing Framework**: Validate improvement effects
+2. **User Feedback Integration**: Incorporate explicit user ratings
+3. **Performance Monitoring**: Real-time system performance tracking
+
+## 8. Conclusion
+
+The Sekai recommendation system demonstrates a sophisticated multi-view approach combining tag-based matching, semantic understanding, and popularity signals. The system effectively handles the challenges of anime/manga content recommendation through:
+
+- **Comprehensive Tag System**: 100+ predefined tags covering IPs, themes, and character types
+- **Multi-modal Recall**: Combining exact matching, semantic search, and popularity
+- **Cost-effective LLM Usage**: Optimized prompts and vector-only fallback
+- **Continuous Optimization**: Prompt evolution and fusion weight tuning
+
+The current implementation achieves reasonable precision (0.492) while maintaining cost efficiency, with ongoing improvements focused on cold-start scenarios and recommendation diversity.
