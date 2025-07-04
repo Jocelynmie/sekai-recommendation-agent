@@ -78,13 +78,6 @@ The system is composed of three main agents, orchestrated in an evaluation-optim
 
 The **Orchestrator** coordinates these agents, running multi-cycle experiments, logging results, and managing prompt evolution.
 
-### Code Quality & Documentation
-
-- **Single Command Execution**: `python run_experiment.py` runs everything
-- **Comprehensive Logging**: Detailed logs with prompts, recommendations, and metrics
-- **Clean Architecture**: Modular design with clear separation of concerns
-- **Extensive Documentation**: Detailed analysis reports and strategy templates
-
 ## 📊 Performance & Robustness
 
 ### Current Performance
@@ -101,8 +94,6 @@ The **Orchestrator** coordinates these agents, running multi-cycle experiments, 
 - **Cost Monitoring**: Real-time token usage tracking
 - **Cross-Validation**: Multiple evaluation modes (LLM + keyword)
 
-## 🛠 Technical Implementation
-
 ## 📈 Evaluation & Analysis
 
 ### Comprehensive Metrics
@@ -111,8 +102,6 @@ The **Orchestrator** coordinates these agents, running multi-cycle experiments, 
 - **Recall@K**: Coverage of relevant content
 - **Method Distribution**: Analysis of recall sources
 - **Cost Tracking**: Token usage and API costs
-
-## 🔧 Advanced Usage
 
 ### Prompt Strategy Templates
 
