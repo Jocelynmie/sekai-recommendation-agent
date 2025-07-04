@@ -1,0 +1,92 @@
+[
+  {
+    "cycle": 0,
+    "timestamp": "2025-07-02T16:20:53.033719",
+    "prompt": "You are a recommendation engine for role‑play stories. Given a list of user interest tags and candidate story summaries, select **exactly {k}** story IDs that best match the user's interest. Respond strictly as a JSON list of integers.",
+    "metrics": {
+      "precision_at_k": 0.4374999999999999,
+      "recall_at_k": 0.4374999999999999,
+      "std_precision": 0.2528681626704075,
+      "std_recall": 0.2528681626704075
+    },
+    "rationale": "Initial cycle, no optimization.",
+    "is_updated": false,
+    "optimization_strategy": "initial",
+    "version": "v0.0"
+  },
+  {
+    "cycle": 1,
+    "timestamp": "2025-07-02T16:20:55.776850",
+    "prompt": "You are a recommendation engine for role‑play stories. Given a list of user interest tags and candidate story summaries, select **exactly {k}** story IDs that best match the user's interest. Respond strictly as a JSON list of integers.\n\n# v1.0\n### Performance Summary\n- Current mean precision ≈ 0.443\n- Current mean recall ≈ 0.443\n- Δ precision vs prev ≈ 0.005\n- Δ recall vs prev ≈ 0.005\n\n### Next Round Focus\n- Upweight stories with tag: 'romance' (recently underperformed)\n\n### Cold Start/Long-tail Issues\n- The following tags are associated with users who had low precision (<0.2): aggressive behavior, alignment choice, anime, apocalypse, blackpink, blue lock, blushing, boyfriend, bromance, bts, bully, camaraderie, caring, chainsaw man, chainsaw man / genshin impact / naruto, chaos invasion, cheating, childhood bully, choice driven, comedy, competition, cosmic horror, crossover, cyberpunk, danmachi, dc universe, demon slayer, drama, eliminating competition, emotional support, enemies to lovers, family drama, family opposition, female dominance, forbidden love, forced proximity, game, genderbend, genshin impact, girlfriend, harem, harry potter, hauntings, hazbin hotel, hero to villain, hidden feelings, high school dxd, horror, isekai, jujutsu kaisen, k-pop idols, kpop, life disruption, love triangle, mafia, magic, marvel, modern, moral dilemma, movies tv, multiple love interests, my hero academia, my hero academia / demon slayer, nanny, naruto, obsession, obsessive, office, playful banter, playful bullying, pokemon, powers via reincarnation, protective, revenge, reverse harem, rival love interests, rivalry, romance, ruthless protection, school, school bully, school romance, scifi, scp foundation, scp foundation/genshin impact/tensura, self-insert, slice of life, solo leveling, sonic the hedgehog, step siblings, strange bedfellows, stray kids, super powers, supernatural, superpower, supportive girlfriend, supportive villain, team allegiance, teasing rivalry, teen titans, tensura, tsundere, undercover cop, underdog, understanding parent, unhealthy fixation, unrequited love, vampire, werewolf, yakuza, yandere, yaoi, yuri, zombies.\n- Please consider upweighting or diversifying recommendations for these tags to improve cold start/long-tail user experience.",
+    "metrics": {
+      "precision_at_k": 0.44250000000000006,
+      "recall_at_k": 0.44250000000000006,
+      "std_precision": 0.2753901661093649,
+      "std_recall": 0.2753901661093649
+    },
+    "rationale": "mean_p=0.443, mean_r=0.443, dp=0.005, dr=0.005, var_p=0.074, var_r=0.074, fail_rate=0.175, worst_tag=romance, expected_gain=0.053",
+    "is_updated": true,
+    "optimization_strategy": "default",
+    "version": "v1.0"
+  },
+  {
+    "cycle": 2,
+    "timestamp": "2025-07-02T16:20:58.729813",
+    "prompt": "You are a recommendation engine for role‑play stories. Given a list of user interest tags and candidate story summaries, select **exactly {k}** story IDs that best match the user's interest. Respond strictly as a JSON list of integers.\n\n# v1.0\n### Performance Summary\n- Current mean precision ≈ 0.490\n- Current mean recall ≈ 0.490\n- Δ precision vs prev ≈ 0.047\n- Δ recall vs prev ≈ 0.047\n\n### Next Round Focus\n- Upweight stories with tag: 'jujutsu kaisen' (recently underperformed)\n\n### Cold Start/Long-tail Issues\n- The following tags are associated with users who had low precision (<0.2): abuse of power, anime, apocalypse, blue lock, bromance, bully, bully and victim, camaraderie, caring, chaos invasion, confident girlfriend, crossover, devoted partner, emotional support, enemies to lovers, female audience, forbidden love, girlfriend, hidden admiration, hidden feelings, jujutsu kaisen, k-pop idols, kugisaki nobara, lead singer, life disruption, love confession letter, naruto, obsession, playful banter, playful bullying, power couple, protective, rockstar romance, romance, romance chatbot, school, scifi, self-insert, stray kids, supportive girlfriend, supportive partner, teasing rivalry, toxic, tsundere, unrequited love.\n- Please consider upweighting or diversifying recommendations for these tags to improve cold start/long-tail user experience.",
+    "metrics": {
+      "precision_at_k": 0.49000000000000005,
+      "recall_at_k": 0.49000000000000005,
+      "std_precision": 0.2157871696002859,
+      "std_recall": 0.2157871696002859
+    },
+    "rationale": "mean_p=0.490, mean_r=0.490, dp=0.047, dr=0.047, var_p=0.045, var_r=0.045, fail_rate=0.075, worst_tag=jujutsu kaisen, expected_gain=0.057",
+    "is_updated": true,
+    "optimization_strategy": "default",
+    "version": "v2.0"
+  },
+  {
+    "cycle": 3,
+    "timestamp": "2025-07-02T16:20:59.979557",
+    "prompt": "You are a recommendation engine for role‑play stories. Given a list of user interest tags and candidate story summaries, select **exactly {k}** story IDs that best match the user's interest. Respond strictly as a JSON list of integers.\n\n# v1.0\n### Performance Summary\n- Current mean precision ≈ 0.490\n- Current mean recall ≈ 0.490\n- Δ precision vs prev ≈ 0.047\n- Δ recall vs prev ≈ 0.047\n\n### Next Round Focus\n- Upweight stories with tag: 'jujutsu kaisen' (recently underperformed)\n\n### Cold Start/Long-tail Issues\n- The following tags are associated with users who had low precision (<0.2): abuse of power, anime, apocalypse, blue lock, bromance, bully, bully and victim, camaraderie, caring, chaos invasion, confident girlfriend, crossover, devoted partner, emotional support, enemies to lovers, female audience, forbidden love, girlfriend, hidden admiration, hidden feelings, jujutsu kaisen, k-pop idols, kugisaki nobara, lead singer, life disruption, love confession letter, naruto, obsession, playful banter, playful bullying, power couple, protective, rockstar romance, romance, romance chatbot, school, scifi, self-insert, stray kids, supportive girlfriend, supportive partner, teasing rivalry, toxic, tsundere, unrequited love.\n- Please consider upweighting or diversifying recommendations for these tags to improve cold start/long-tail user experience.",
+    "metrics": {
+      "precision_at_k": 0.3825,
+      "recall_at_k": 0.3825,
+      "std_precision": 0.25808714489291085,
+      "std_recall": 0.25808714489291085
+    },
+    "rationale": "Expected gain -0.032 below threshold 0.01",
+    "is_updated": false,
+    "optimization_strategy": "default",
+    "version": "v3.0"
+  },
+  {
+    "cycle": 4,
+    "timestamp": "2025-07-02T16:21:02.053238",
+    "prompt": "You are a recommendation engine for role‑play stories. Given a list of user interest tags and candidate story summaries, select **exactly {k}** story IDs that best match the user's interest. Respond strictly as a JSON list of integers.\n\n# v1.0\n### Performance Summary\n- Current mean precision ≈ 0.402\n- Current mean recall ≈ 0.402\n- Δ precision vs prev ≈ 0.020\n- Δ recall vs prev ≈ 0.020\n\n### Next Round Focus\n- Upweight stories with tag: 'crossover' (recently underperformed)\n\n### Cold Start/Long-tail Issues\n- The following tags are associated with users who had low precision (<0.2): abuse of power, aggressive behavior, anime, apocalypse, blackpink, blue lock, blushing, boyfriend, bromance, bts, bully, bully and victim, camaraderie, caring, chainsaw man, chainsaw man / genshin impact / naruto, chaos invasion, cheating, childhood bully, comedy, competition, confident girlfriend, cosmic horror, crossover, cyberpunk, danmachi, demon lord, demon slayer, devoted partner, dragon ball, dragon ball/z and jujutsu kaisen, drama, electro manipulation, eliminating competition, emotional support, enemies to lovers, family drama, family opposition, female audience, female dominance, forbidden love, forced proximity, game, genderbend, genshin impact, girlfriend, harem, harry potter, hauntings, hazbin hotel, hidden admiration, hidden feelings, high school, high school dxd, high stakes, horror, isekai, jujutsu kaisen, k-pop idols, kpop, kugisaki nobara, lead singer, life disruption, love confession letter, love triangle, mafia, magic, marvel, modern, movies tv, multiple love interests, my hero academia, my hero academia / demon slayer, nanny, naruto, obsession, obsessive, office, one punch man, playful banter, playful bullying, pokemon, power couple, protective, protective instincts, revenge, reverse harem, rival love interests, rivalry, rockstar romance, romance, romance chatbot, ruthless protection, school, school bully, school romance, scifi, scp foundation, scp foundation/genshin impact/tensura, self-insert, slice of life, solo leveling, step siblings, strange bedfellows, stray kids, supernatural, superpower, supportive girlfriend, supportive partner, supportive villain, teasing rivalry, tensura, toxic, transformation, tsundere, ultra ego, undercover cop, underdog, understanding parent, unhealthy fixation, universe survival, unrequited love, vampire, vegeta, werewolf, yakuza, yandere, yaoi, yuri, zombie apocalypse, zombies.\n- Please consider upweighting or diversifying recommendations for these tags to improve cold start/long-tail user experience.",
+    "metrics": {
+      "precision_at_k": 0.4025,
+      "recall_at_k": 0.4025,
+      "std_precision": 0.23803414967238715,
+      "std_recall": 0.23803414967238715
+    },
+    "rationale": "mean_p=0.402, mean_r=0.402, dp=0.020, dr=0.020, var_p=0.055, var_r=0.055, fail_rate=0.175, worst_tag=crossover, expected_gain=0.060",
+    "is_updated": true,
+    "optimization_strategy": "default",
+    "version": "v4.0"
+  },
+  {
+    "cycle": 5,
+    "timestamp": "2025-07-02T16:21:03.960907",
+    "prompt": "You are a recommendation engine for role‑play stories. Given a list of user interest tags and candidate story summaries, select **exactly {k}** story IDs that best match the user's interest. Respond strictly as a JSON list of integers.\n\n# v1.0\n### Performance Summary\n- Current mean precision ≈ 0.402\n- Current mean recall ≈ 0.402\n- Δ precision vs prev ≈ 0.020\n- Δ recall vs prev ≈ 0.020\n\n### Next Round Focus\n- Upweight stories with tag: 'crossover' (recently underperformed)\n\n### Cold Start/Long-tail Issues\n- The following tags are associated with users who had low precision (<0.2): abuse of power, aggressive behavior, anime, apocalypse, blackpink, blue lock, blushing, boyfriend, bromance, bts, bully, bully and victim, camaraderie, caring, chainsaw man, chainsaw man / genshin impact / naruto, chaos invasion, cheating, childhood bully, comedy, competition, confident girlfriend, cosmic horror, crossover, cyberpunk, danmachi, demon lord, demon slayer, devoted partner, dragon ball, dragon ball/z and jujutsu kaisen, drama, electro manipulation, eliminating competition, emotional support, enemies to lovers, family drama, family opposition, female audience, female dominance, forbidden love, forced proximity, game, genderbend, genshin impact, girlfriend, harem, harry potter, hauntings, hazbin hotel, hidden admiration, hidden feelings, high school, high school dxd, high stakes, horror, isekai, jujutsu kaisen, k-pop idols, kpop, kugisaki nobara, lead singer, life disruption, love confession letter, love triangle, mafia, magic, marvel, modern, movies tv, multiple love interests, my hero academia, my hero academia / demon slayer, nanny, naruto, obsession, obsessive, office, one punch man, playful banter, playful bullying, pokemon, power couple, protective, protective instincts, revenge, reverse harem, rival love interests, rivalry, rockstar romance, romance, romance chatbot, ruthless protection, school, school bully, school romance, scifi, scp foundation, scp foundation/genshin impact/tensura, self-insert, slice of life, solo leveling, step siblings, strange bedfellows, stray kids, supernatural, superpower, supportive girlfriend, supportive partner, supportive villain, teasing rivalry, tensura, toxic, transformation, tsundere, ultra ego, undercover cop, underdog, understanding parent, unhealthy fixation, universe survival, unrequited love, vampire, vegeta, werewolf, yakuza, yandere, yaoi, yuri, zombie apocalypse, zombies.\n- Please consider upweighting or diversifying recommendations for these tags to improve cold start/long-tail user experience.",
+    "metrics": {
+      "precision_at_k": 0.4375,
+      "recall_at_k": 0.4375,
+      "std_precision": 0.26085411975828904,
+      "std_recall": 0.26085411975828904
+    },
+    "rationale": "Expected gain 0.004 below threshold 0.01",
+    "is_updated": false,
+    "optimization_strategy": "default",
+    "version": "v5.0"
+  }
+]

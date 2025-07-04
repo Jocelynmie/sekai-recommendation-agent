@@ -1,228 +1,254 @@
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Union
-import logging
+"""
+基础智能体类
+所有智能体的父类，提供通用功能
+"""
+from abc import ABC, abstractmethod
+from typing import Dict, Any, List, Optional
+import json
 import time
 from datetime import datetime
-import json
-import hashlib
+from loguru import logger #type: ignore
+import os
 
-@dataclass
-class AgentResponse:
-    """Response from an agent with metadata and token tracking"""
-    content: Any
-    success: bool = True
-    error_message: Optional[str] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    tokens_used: int = 0
-    response_time: float = 0.0
-    timestamp: datetime = field(default_factory=datetime.now)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert response to dictionary for serialization"""
-        return {
-            'content': self.content,
-            'success': self.success,
-            'error_message': self.error_message,
-            'metadata': self.metadata,
-            'tokens_used': self.tokens_used,
-            'response_time': self.response_time,
-            'timestamp': self.timestamp.isoformat()
-        }
-    
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'AgentResponse':
-        """Create response from dictionary"""
-        data = data.copy()
-        if 'timestamp' in data and isinstance(data['timestamp'], str):
-            data['timestamp'] = datetime.fromisoformat(data['timestamp'])
-        return cls(**data)
 
-class BaseAgent:
-    """Base class for all agents in the recommendation system"""
+class BaseAgent(ABC):
+    """基础智能体抽象类"""
     
-    def __init__(self, 
-                 agent_id: str,
-                 name: str,
-                 description: str = "",
-                 config: Optional[Dict[str, Any]] = None):
+    def __init__(self, name: str, model_wrapper, config: Optional[Dict[str, Any]] = None):
         """
-        Initialize base agent
+        初始化基础智能体
         
         Args:
-            agent_id: Unique identifier for the agent
-            name: Human-readable name
-            description: Agent description
-            config: Configuration dictionary
+            name: 智能体名称
+            model_wrapper: 模型包装器实例
+            config: 智能体配置
         """
-        self.agent_id = agent_id
         self.name = name
-        self.description = description
+        self.model = model_wrapper
         self.config = config or {}
+        self.history: List[Dict[str, Any]] = []
+        self.state: Dict[str, Any] = {}
         
-        # Setup logging
-        self.logger = self._setup_logger()
+        # 创建日志目录
+        self.log_dir = os.path.join("logs", self.name.lower().replace(" ", "_"))
+        os.makedirs(self.log_dir, exist_ok=True)
         
-        # Token tracking
-        self.total_tokens_used = 0
-        self.token_history: List[Dict[str, Any]] = []
-        
-        # Performance tracking
-        self.total_requests = 0
-        self.successful_requests = 0
-        self.failed_requests = 0
-        
-        self.logger.info(f"Initialized {self.name} (ID: {self.agent_id})")
+        logger.info(f"初始化智能体: {self.name}")
     
-    def _setup_logger(self) -> logging.Logger:
-        """Setup agent-specific logger"""
-        logger = logging.getLogger(f"agent.{self.agent_id}")
-        logger.setLevel(logging.INFO)
-        
-        # Create handler if it doesn't exist
-        if not logger.handlers:
-            handler = logging.StreamHandler()
-            formatter = logging.Formatter(
-                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-            )
-            handler.setFormatter(formatter)
-            logger.addHandler(handler)
-        
-        return logger
-    
-    def _track_tokens(self, tokens_used: int, operation: str = "unknown"):
-        """Track token usage"""
-        self.total_tokens_used += tokens_used
-        token_record = {
-            'timestamp': datetime.now(),
-            'tokens_used': tokens_used,
-            'operation': operation,
-            'total_tokens': self.total_tokens_used
-        }
-        self.token_history.append(token_record)
-        self.logger.debug(f"Used {tokens_used} tokens for {operation}")
-    
-    def _track_request(self, success: bool, response_time: float):
-        """Track request performance"""
-        self.total_requests += 1
-        if success:
-            self.successful_requests += 1
-        else:
-            self.failed_requests += 1
-        
-        self.logger.debug(f"Request completed: success={success}, time={response_time:.3f}s")
-    
-    def process(self, input_data: Any, **kwargs) -> AgentResponse:
+    @abstractmethod
+    def process(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Process input data and return response
+        处理输入并返回结果
         
         Args:
-            input_data: Input data to process
-            **kwargs: Additional arguments
+            input_data: 输入数据
             
         Returns:
-            AgentResponse with results and metadata
+            处理结果
         """
-        start_time = time.time()
+        pass
+    
+    def log_interaction(self, input_data: Dict[str, Any], output_data: Dict[str, Any]):
+        """
+        记录交互历史
         
+        Args:
+            input_data: 输入数据
+            output_data: 输出数据
+        """
+        interaction = {
+            "timestamp": datetime.now().isoformat(),
+            "input": input_data,
+            "output": output_data
+        }
+        self.history.append(interaction)
+        
+        # 保存到文件
+        log_file = os.path.join(self.log_dir, f"{datetime.now().strftime('%Y%m%d_%H%M%S')}.json")
+        with open(log_file, 'w', encoding='utf-8') as f:
+            json.dump(interaction, f, ensure_ascii=False, indent=2)
+    
+    def get_system_prompt(self) -> str:
+        """
+        获取系统提示词
+        
+        Returns:
+            系统提示词
+        """
+        return self.config.get("system_prompt", f"你是{self.name}，一个专业的AI助手。")
+    
+    def update_state(self, key: str, value: Any):
+        """
+        更新智能体状态
+        
+        Args:
+            key: 状态键
+            value: 状态值
+        """
+        self.state[key] = value
+        logger.debug(f"{self.name} 状态更新: {key} = {value}")
+    
+    def get_state(self, key: str, default: Any = None) -> Any:
+        """
+        获取智能体状态
+        
+        Args:
+            key: 状态键
+            default: 默认值
+            
+        Returns:
+            状态值
+        """
+        return self.state.get(key, default)
+    
+    def reset(self):
+        """重置智能体状态"""
+        self.state.clear()
+        self.history.clear()
+        logger.info(f"{self.name} 已重置")
+    
+    def get_performance_metrics(self) -> Dict[str, Any]:
+        """
+        获取性能指标
+        
+        Returns:
+            性能指标字典
+        """
+        if not self.history:
+            return {}
+        
+        # 计算基本指标
+        total_interactions = len(self.history)
+        
+        # 计算平均处理时间（如果记录了）
+        processing_times = []
+        for interaction in self.history:
+            if "processing_time" in interaction.get("output", {}):
+                processing_times.append(interaction["output"]["processing_time"])
+        
+        metrics = {
+            "total_interactions": total_interactions,
+            "average_processing_time": sum(processing_times) / len(processing_times) if processing_times else 0,
+            "last_interaction": self.history[-1]["timestamp"] if self.history else None
+        }
+        
+        return metrics
+    
+    def format_prompt(self, template: str, **kwargs) -> str:
+        """
+        格式化提示模板
+        
+        Args:
+            template: 提示模板
+            **kwargs: 模板参数
+            
+        Returns:
+            格式化后的提示
+        """
         try:
-            self.logger.info(f"Processing request with {type(input_data).__name__}")
-            
-            # Override this method in subclasses
-            result = self._process_impl(input_data, **kwargs)
-            
-            response_time = time.time() - start_time
-            self._track_request(True, response_time)
-            
-            return AgentResponse(
-                content=result,
-                success=True,
-                metadata={'agent_id': self.agent_id, 'agent_name': self.name},
-                response_time=response_time
-            )
-            
-        except Exception as e:
-            response_time = time.time() - start_time
-            self._track_request(False, response_time)
-            
-            self.logger.error(f"Error processing request: {str(e)}", exc_info=True)
-            
-            return AgentResponse(
-                content=None,
-                success=False,
-                error_message=str(e),
-                metadata={'agent_id': self.agent_id, 'agent_name': self.name},
-                response_time=response_time
-            )
+            return template.format(**kwargs)
+        except KeyError as e:
+            logger.error(f"提示模板格式化失败: 缺少参数 {e}")
+            raise
     
-    def _process_impl(self, input_data: Any, **kwargs) -> Any:
+    def __repr__(self):
+        return f"<{self.__class__.__name__}(name='{self.name}')>"
+
+
+class CachedAgent(BaseAgent):
+    """带缓存功能的智能体基类"""
+    
+    def __init__(self, name: str, model_wrapper, config: Optional[Dict[str, Any]] = None):
+        super().__init__(name, model_wrapper, config)
+        self.cache: Dict[str, Any] = {}
+        self.cache_hits = 0
+        self.cache_misses = 0
+    
+    def get_cache_key(self, input_data: Dict[str, Any]) -> str:
         """
-        Implementation of processing logic - override in subclasses
+        生成缓存键
         
         Args:
-            input_data: Input data to process
-            **kwargs: Additional arguments
+            input_data: 输入数据
             
         Returns:
-            Processed result
+            缓存键
         """
-        raise NotImplementedError("Subclasses must implement _process_impl")
+        # 将输入数据转换为稳定的字符串键
+        return json.dumps(input_data, sort_keys=True)
     
-    def get_stats(self) -> Dict[str, Any]:
-        """Get agent statistics"""
+    def check_cache(self, key: str) -> Optional[Any]:
+        """
+        检查缓存
+        
+        Args:
+            key: 缓存键
+            
+        Returns:
+            缓存的值（如果存在）
+        """
+        if key in self.cache:
+            self.cache_hits += 1
+            logger.debug(f"{self.name} 缓存命中: {key[:50]}...")
+            return self.cache[key]
+        else:
+            self.cache_misses += 1
+            return None
+    
+    def update_cache(self, key: str, value: Any):
+        """
+        更新缓存
+        
+        Args:
+            key: 缓存键
+            value: 要缓存的值
+        """
+        self.cache[key] = value
+        logger.debug(f"{self.name} 缓存更新: {key[:50]}...")
+    
+    def get_cache_stats(self) -> Dict[str, Any]:
+        """
+        获取缓存统计信息
+        
+        Returns:
+            缓存统计
+        """
+        total_requests = self.cache_hits + self.cache_misses
+        hit_rate = self.cache_hits / total_requests if total_requests > 0 else 0
+        
         return {
-            'agent_id': self.agent_id,
-            'name': self.name,
-            'total_requests': self.total_requests,
-            'successful_requests': self.successful_requests,
-            'failed_requests': self.failed_requests,
-            'success_rate': self.successful_requests / max(self.total_requests, 1),
-            'total_tokens_used': self.total_tokens_used,
-            'token_history_count': len(self.token_history)
+            "cache_size": len(self.cache),
+            "cache_hits": self.cache_hits,
+            "cache_misses": self.cache_misses,
+            "hit_rate": hit_rate
         }
     
-    def reset_stats(self):
-        """Reset all statistics"""
-        self.total_tokens_used = 0
-        self.token_history.clear()
-        self.total_requests = 0
-        self.successful_requests = 0
-        self.failed_requests = 0
-        self.logger.info("Statistics reset")
+    def clear_cache(self):
+        """清空缓存"""
+        self.cache.clear()
+        self.cache_hits = 0
+        self.cache_misses = 0
+        logger.info(f"{self.name} 缓存已清空")
+
+
+if __name__ == "__main__":
+    # 测试代码
+    from src.models.gemini_wrapper import create_recommendation_agent #type: ignore
     
-    def save_state(self, filepath: str):
-        """Save agent state to file"""
-        state = {
-            'agent_id': self.agent_id,
-            'name': self.name,
-            'description': self.description,
-            'config': self.config,
-            'stats': self.get_stats(),
-            'token_history': [
-                {**record, 'timestamp': record['timestamp'].isoformat()}
-                for record in self.token_history
-            ]
-        }
-        
-        with open(filepath, 'w') as f:
-            json.dump(state, f, indent=2, default=str)
-        
-        self.logger.info(f"State saved to {filepath}")
+    class TestAgent(BaseAgent):
+        def process(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
+            prompt = input_data.get("prompt", "")
+            response = self.model.generate(prompt, self.get_system_prompt())
+            return {"response": response}
     
-    def load_state(self, filepath: str):
-        """Load agent state from file"""
-        with open(filepath, 'r') as f:
-            state = json.load(f)
-        
-        # Restore token history with proper datetime objects
-        self.token_history = []
-        for record in state.get('token_history', []):
-            record['timestamp'] = datetime.fromisoformat(record['timestamp'])
-            self.token_history.append(record)
-        
-        self.logger.info(f"State loaded from {filepath}")
+    # 创建测试智能体
+    model = create_recommendation_agent()
+    agent = TestAgent("测试智能体", model, {"system_prompt": "你是一个友好的助手。"})
     
-    def __str__(self) -> str:
-        return f"{self.name} (ID: {self.agent_id})"
+    # 测试处理
+    result = agent.process({"prompt": "你好"})
+    logger.info(f"测试结果: {result}")
     
-    def __repr__(self) -> str:
-        return f"BaseAgent(agent_id='{self.agent_id}', name='{self.name}')"
+    # 显示性能指标
+    metrics = agent.get_performance_metrics()
+    logger.info(f"性能指标: {metrics}")

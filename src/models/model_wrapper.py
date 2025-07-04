@@ -85,6 +85,11 @@ class BaseModelWrapper(ABC):
             "total_cost": self.total_cost,
             "cache_size": len(self._cache)
         }
+    
+    def clear_cache(self):
+        """清除缓存"""
+        self._cache.clear()
+        logger.debug(f"缓存已清除，原大小: {len(self._cache)}")
 
 
 # 模型注册表和注册装饰器
@@ -404,8 +409,14 @@ def create_recommendation_agent() -> BaseModelWrapper:
     创建推荐智能体
     根据架构：Gemini 2.0 Flash 或 GPT-4o Mini
     """
+    # 调试环境变量
+    openai_key = os.getenv("OPENAI_API_KEY")
+    google_key = os.getenv("GOOGLE_API_KEY")
+    
+    logger.info(f"Environment check - OpenAI: {'✅' if openai_key else '❌'}, Google: {'✅' if google_key else '❌'}")
+    
     # 优先使用 Gemini Flash（免费）
-    if os.getenv("GOOGLE_API_KEY"):
+    if google_key:
         try:
             logger.info("使用 Gemini 2.0 Flash 作为推荐模型")
             return GeminiWrapper(model_type="flash", temperature=0.7)
@@ -413,14 +424,23 @@ def create_recommendation_agent() -> BaseModelWrapper:
             logger.warning(f"Gemini Flash 不可用: {e}")
     
     # 备选：GPT-4o Mini（便宜）
-    if os.getenv("OPENAI_API_KEY"):
+    if openai_key:
         try:
             logger.info("使用 GPT-4o Mini 作为推荐模型")
             return OpenAIWrapper(model_type="gpt-4o-mini", temperature=0.7)
         except Exception as e:
             logger.warning(f"GPT-4o Mini 不可用: {e}")
     
-    raise RuntimeError("没有可用的推荐模型")
+    # 详细错误信息
+    error_msg = "没有可用的推荐模型 - "
+    if not openai_key and not google_key:
+        error_msg += "OPENAI_API_KEY 和 GOOGLE_API_KEY 都未设置"
+    elif not openai_key:
+        error_msg += "OPENAI_API_KEY 未设置"
+    elif not google_key:
+        error_msg += "GOOGLE_API_KEY 未设置"
+    
+    raise RuntimeError(error_msg)
 
 
 # def create_evaluation_agent() -> BaseModelWrapper:
