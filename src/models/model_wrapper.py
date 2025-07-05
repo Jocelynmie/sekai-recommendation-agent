@@ -116,6 +116,7 @@ class GeminiWrapper(BaseModelWrapper):
         "flash-thinking": "gemini-2.0-flash-thinking-exp-1219",  # 思考模型
         "pro": "gemini-1.5-pro-002",
         "pro-latest": "gemini-exp-1206",
+        "pro-2.5": "gemini-2.5-pro",  # 最新Gemini 2.5 Pro
     }
     
     def __init__(self, model_type: str = "flash", temperature: float = 0.7):
@@ -476,9 +477,17 @@ def create_recommendation_agent() -> BaseModelWrapper:
 def create_evaluation_agent() -> BaseModelWrapper:
     """
     创建评估智能体
-    使用可用的最佳模型
+    使用可用的最佳模型 - 优先使用最新模型
     """
-    # 优先使用 GPT-4o
+    # 优先使用 Gemini 2.5 Pro（最新）
+    if os.getenv("GOOGLE_API_KEY"):
+        try:
+            logger.info("使用 Gemini 2.5 Pro 作为评估模型")
+            return GeminiWrapper(model_type="pro-2.5", temperature=0.3)
+        except Exception as e:
+            logger.warning(f"Gemini 2.5 Pro 不可用: {e}")
+    
+    # 备选：GPT-4o
     if os.getenv("OPENAI_API_KEY"):
         try:
             logger.info("使用 GPT-4o 作为评估模型")
@@ -516,23 +525,31 @@ def create_evaluation_agent() -> BaseModelWrapper:
 def create_optimizer_agent() -> BaseModelWrapper:
     """
     创建优化智能体
-    根据架构：GPT-4o 或 Claude 3.5 Sonnet
+    根据架构：优先使用最新模型
     """
-    # 优先使用 GPT-4o（最新）
-    if os.getenv("OPENAI_API_KEY"):
-        try:
-            logger.info("使用 GPT-4o 作为优化模型")
-            return OpenAIWrapper(model_type="gpt-4o", temperature=0.5)
-        except Exception as e:
-            logger.warning(f"GPT-4o 不可用: {e}")
-    
-    # 备选：Claude 3.5 Sonnet（创造性强）
+    # 优先使用 Claude 3.5 Sonnet（创意/分析强，成本低40%）
     if os.getenv("ANTHROPIC_API_KEY"):
         try:
             logger.info("使用 Claude 3.5 Sonnet 作为优化模型")
             return AnthropicWrapper(model_type="claude-3.5-sonnet", temperature=0.5)
         except Exception as e:
             logger.warning(f"Claude 3.5 Sonnet 不可用: {e}")
+    
+    # 备选：Gemini 2.5 Pro（最新）
+    if os.getenv("GOOGLE_API_KEY"):
+        try:
+            logger.info("使用 Gemini 2.5 Pro 作为优化模型")
+            return GeminiWrapper(model_type="pro-2.5", temperature=0.5)
+        except Exception as e:
+            logger.warning(f"Gemini 2.5 Pro 不可用: {e}")
+    
+    # 备选：GPT-4o
+    if os.getenv("OPENAI_API_KEY"):
+        try:
+            logger.info("使用 GPT-4o 作为优化模型")
+            return OpenAIWrapper(model_type="gpt-4o", temperature=0.5)
+        except Exception as e:
+            logger.warning(f"GPT-4o 不可用: {e}")
     
     # 最后选择：Gemini Flash Thinking
     if os.getenv("GOOGLE_API_KEY"):
