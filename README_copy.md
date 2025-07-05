@@ -135,11 +135,11 @@ pip install -r requirements.txt
 
 Key dependencies:
 
-- `openai` / `google-generativeai`: LLM APIs
-- `sentence-transformers`: Embedding models
-- `whoosh`: Inverted indexing
-- `faiss`: Vector similarity search
-- `pandas` / `numpy`: Data processing
+- **LLM APIs**: `google-generativeai` / `openai` / `anthropic`
+- **向量和搜索**: `sentence-transformers` / `faiss-cpu` / `whoosh`
+- **数据处理**: `pandas` / `numpy`
+- **日志和配置**: `loguru` / `python-dotenv`
+- **工具类**: `tqdm`
 
 ## 📄 License
 

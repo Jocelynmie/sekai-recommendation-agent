@@ -1,7 +1,6 @@
 # 核心依赖
 pandas>=2.0.0
 numpy>=1.24.0
-scikit-learn>=1.3.0
 python-dotenv>=1.0.0
 
 # AI/LLM 相关
@@ -9,25 +8,15 @@ google-generativeai>=0.8.0  # 最新的 Gemini API
 openai>=1.30.0  # 备选，如果需要使用 OpenAI
 anthropic>=0.34.0  # 备选，如果需要使用 Claude
 
-# 多智能体框架（选择其一）
-langgraph>=0.2.0  # LangChain 的图框架，适合构建智能体工作流
-# 或者
-# autogen>=0.2.0  # Microsoft 的多智能体框架
-# crewai>=0.30.0  # 另一个流行的多智能体框架
-
 # 向量数据库和嵌入
-chromadb>=0.4.0  # 用于存储和检索嵌入
 sentence-transformers>=2.2.0  # 用于生成嵌入
+faiss-cpu>=1.7.0  # 向量相似度搜索 (CPU版本)
 
-# 工具类
-tqdm>=4.66.0  # 进度条
-colorama>=0.4.6  # 彩色输出
-tabulate>=0.9.0  # 表格格式化
-pyyaml>=6.0  # YAML配置文件
+# 文本搜索
+whoosh>=2.7.4  # 倒排索引
 
 # 日志和监控
 loguru>=0.7.0  # 更好的日志记录
 
-# 可选：评估指标
-nltk>=3.8.0  # 自然语言处理
-textstat>=0.7.3  # 文本统计loguru>=0.7.0
+# 工具类
+tqdm>=4.66.0  # 进度条

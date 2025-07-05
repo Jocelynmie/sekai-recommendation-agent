@@ -48,119 +48,65 @@ pip install -r requirements.txt
 
 Key dependencies:
 
-- `openai` / `google-generativeai`: LLM APIs
-- `sentence-transformers`: Embedding models
-- `whoosh`: Inverted indexing
-- `faiss`: Vector similarity search
-- `pandas` / `numpy`: Data processing
+- **LLM APIs**: `google-generativeai` / `openai` / `anthropic`
+- **向量和搜索**: `sentence-transformers` / `faiss-cpu` / `whoosh`
+- **数据处理**: `pandas` / `numpy`
+- **日志和配置**: `loguru` / `python-dotenv`
+- **工具类**: `tqdm`
 
 ## Architecture & Agent Roles
 
 ```
-┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│ Multi-View      │    │ Recommendation   │    │ Evaluation      │
-│ Recall System   │───▶│ Agent            │───▶│ Agent           │
-│ (Tag+Semantic+  │    │ (LLM Rerank)     │    │ (LLM Eval)      │
-│  Rule+Popular)  │    │                  │    │                 │
-└─────────────────┘    └──────────────────┘    └─────────────────┘
-                                │
-                                ▼
-                       ┌──────────────────┐
-                       │ Prompt Optimizer │
-                       │ Agent            │
-                       └──────────────────┘
+┌──────────┐
+│  Client  │
+└───▲──┬───┘
+    │  │behavior
+    │  │logs
+    ▼  │
+┌────────────────────────┐
+│   A/B Router & Guard   │◀── BudgetMonitor ──┐
+└───────┬────────┬───────┘                  │
+        │        │                          │
+        │latency │fallback                  │cost
+        ▼        ▼                          │
+┌──────────────┐  ┌─────────────────┐       │
+│ Vector Store │  │ Multi‑View      │       │
+│  (Milvus)    │  │  Recall System  │       │
+└─────┬────────┘  └────────┬────────┘       │
+      │ candidates         │                │
+      ▼                    ▼                │
+┌──────────────────┐   ┌──────────────────┐  │
+│ Recommendation   │   │  Policy Guard    │──┘
+│  Agent (LLM)     │   │  (safety/fair)   │
+└────────┬─────────┘   └────────┬─────────┘
+         │ ranked               │filtered
+         ▼                      ▼
+      ┌───────────────────────────────────┐
+      │           User Feed               │
+      └───────────────────────────────────┘
+                         │
+                         ▼
+              ┌──────────────────┐
+              │ Evaluation Agent │
+              └────────┬─────────┘
+                       ▼
+              ┌──────────────────┐
+              │ Prompt Optimizer │
+              └──────────────────┘
 ```
 
-The system is composed of three main agents, orchestrated in an evaluation-optimization loop:
+**System Overview:**
 
-### **RecommendationAgent**
-
-- **Primary Model**: Gemini 2.0 Flash (latest "no-thinking" model, >300 RPS, free quota)
-- **Fallback**: GPT-4o Mini
-- **Function**: Receives user interest tags and returns the top-K most relevant content IDs
-- **Approach**: Hybrid vector recall (FAISS + embeddings) + LLM-based reranking
-- **Features**: Prompt hot-swapping and template optimization
-
-### **EvaluationAgent**
-
-- **Primary Model**: Gemini 2.5 Pro (June 2025 release, SOTA reasoning, 20% cheaper than GPT-4o)
-- **Fallback**: GPT-4o, GPT-4, Claude 3.5 Haiku
-- **Function**: Evaluates recommendation quality using LLM-based or keyword-based ground truth
-- **Metrics**: Precision, recall, F1 with detailed logging per user and cycle
-
-### **PromptOptimizerAgent**
-
-- **Primary Model**: Claude 3.5 Sonnet (strong creativity/analysis, 40% cheaper than GPT-4o)
-- **Fallback**: Gemini 2.5 Pro, GPT-4o, Gemini Flash Thinking
-- **Function**: Analyzes evaluation history and dynamically updates system prompts
-- **Strategies**: Exploit (incremental improvement) and explore (diversification)
-
-The **Orchestrator** coordinates these agents, running multi-cycle experiments, logging results, and managing prompt evolution.
-
-## 🤖 Model Selection Strategy
-
-Our system uses a **cutting-edge, cost-effective model stack** with the latest AI models from multiple vendors:
-
-### **Model Configuration**
-
-| Agent                    | Primary Model     | Key Advantages                                   | Cost Savings     |
-| ------------------------ | ----------------- | ------------------------------------------------ | ---------------- |
-| **RecommendationAgent**  | Gemini 2.0 Flash  | Latest "no-thinking" model, >300 RPS, free quota | 100% (free tier) |
-| **EvaluationAgent**      | Gemini 2.5 Pro    | June 2025 release, SOTA reasoning, 1.5×-2× speed | 20% vs GPT-4o    |
-| **PromptOptimizerAgent** | Claude 3.5 Sonnet | Strong creativity/analysis, latest Claude series | 40% vs GPT-4o    |
-
-### **Technical Benefits**
-
-- **Latest Models**: Uses 2025 releases (Gemini 2.5 Pro, Claude 3.5 Sonnet)
-- **Multi-Vendor**: Google + Anthropic + OpenAI fallbacks
-- **Cost Optimization**: 30% total savings vs all-GPT-4o
-- **Performance**: 1.5×-2× speed improvement
-
-> 📖 **Detailed Analysis**: See [`MODEL_SELECTION_STRATEGY.md`](./MODEL_SELECTION_STRATEGY.md) for comprehensive model selection rationale and cost analysis.
-
-## 📊 Performance & Robustness
-
-### Current Performance
-
-- **Precision@10**: ~0.49 (baseline)
-- **Recall@10**: ~0.49 (baseline)
-- **Multi-View Recall**: 500+ candidates from diverse sources
-- **LLM Rerank**: 30-candidate window for quality optimization
-
-### Robustness Features
-
-- **Fallback Mechanisms**: Vector recall when LLM unavailable
-- **Error Handling**: Graceful degradation on API failures
-- **Cost Monitoring**: Real-time token usage tracking
-- **Cross-Validation**: Multiple evaluation modes (LLM + keyword)
-
-## 📈 Evaluation & Analysis
-
-### Comprehensive Metrics
-
-- **Precision@K**: Accuracy of top-K recommendations
-- **Recall@K**: Coverage of relevant content
-- **Method Distribution**: Analysis of recall sources
-- **Cost Tracking**: Token usage and API costs
-
-### Prompt Strategy Templates
-
-See `prompt_strategy_templates.md` for advanced prompt engineering techniques:
-
-- LLM rerank strategies
-- Cold-start optimization
-- Tag upweighting methods
-- Diversity enhancement
-
-## 📄 License
-
-MIT License - see LICENSE file for details.
-
----
-
-**Built with ❤️ for the Sekai community**
-
----
+- **Client**: Sends user behavior and receives recommendations.
+- **A/B Router & Guard**: Handles traffic splitting, latency fallback, and cost control (with BudgetMonitor).
+- **Vector Store (Milvus)**: Stores content embeddings for fast candidate retrieval.
+- **Multi-View Recall System**: Combines tag, semantic, rule, and popularity signals to generate diverse candidates.
+- **Recommendation Agent (LLM)**: Reranks candidates using LLMs for high-quality recommendations.
+- **Policy Guard**: Applies safety and fairness filtering to the ranked list.
+- **User Feed**: Final recommendations delivered to the user.
+- **Evaluation Agent**: Continuously evaluates recommendation quality and logs metrics.
+- **Prompt Optimizer**: Dynamically updates prompts and strategies based on evaluation feedback.
+- **BudgetMonitor**: Monitors and controls API usage and cost.
 
 ## Caching Strategy
 
@@ -187,3 +133,74 @@ MIT License - see LICENSE file for details.
   - The prompt optimizer monitors the improvement (`delta`) in metrics across cycles.
   - If the expected gain in precision/recall falls below a configurable threshold (`min_delta`) for multiple rounds, the optimizer triggers an "explore" strategy or halts further prompt updates.
   - This ensures efficient convergence and avoids overfitting to noise.
+
+## 🤖 Model Selection Strategy
+
+Our system uses a **cutting-edge, cost-effective model stack** with the latest AI models from multiple vendors:
+
+### **Model Configuration**
+
+| Agent                    | Primary Model     | Key Advantages                                   | Cost Savings     |
+| ------------------------ | ----------------- | ------------------------------------------------ | ---------------- |
+| **RecommendationAgent**  | Gemini 2.0 Flash  | Latest "no-thinking" model, >300 RPS, free quota | 100% (free tier) |
+| **EvaluationAgent**      | Gemini 2.5 Pro    | June 2025 release, SOTA reasoning, 1.5×-2× speed | 20% vs GPT-4o    |
+| **PromptOptimizerAgent** | Claude 3.5 Sonnet | Strong creativity/analysis, latest Claude series | 40% vs GPT-4o    |
+
+### **Technical Benefits**
+
+- **Latest Models**: Uses 2025 releases (Gemini 2.5 Pro, Claude 3.5 Sonnet)
+- **Multi-Vendor**: Google + Anthropic + OpenAI fallbacks
+- **Cost Optimization**: 30% total savings vs all-GPT-4o
+- **Performance**: 1.5×-2× speed improvement
+
+> 📖 **Detailed Analysis**: See [`MODEL_SELECTION_STRATEGY.md`](./MODEL_SELECTION_STRATEGY.md) for comprehensive model selection rationale and cost analysis.
+
+## 📊 Performance & Robustness
+
+### Baseline Metrics (Cycle 0)
+
+| Environment        | Precision@10 | Recall@10 |
+| ------------------ | ------------ | --------- |
+| **run_free**       | **0.426**    | 0.438     |
+| **run_experiment** | **0.573**    | 0.861     |
+
+> _Values from `summary.json` auto-aggregation; different environments not directly comparable, for trend reference only._
+
+- **Multi-View Recall**: ≈ 220 candidates (Tag 50 + Semantic 120 + Rule 20 + Hot 30).
+- **LLM Re-rank Window**: Top-30 candidates are rescored by the Recommendation-LLM.
+
+### Robustness Features
+
+| Mechanism            | Description                                                                                           |
+| -------------------- | ----------------------------------------------------------------------------------------------------- |
+| **Fallback**         | `--mode vector` or auto-switch to vector ranking when API-Key missing.                                |
+| **Error Handling**   | Each LLM call `max_retries=3` with exponential backoff; multiple failures throw `ModelError` and log. |
+| **Cost Monitoring**  | `budget_monitor` aggregates tokens & \$ per cycle, output at log end.                                 |
+| **Cross-Validation** | Supports `llm`, `keyword`, `vector` 3 evaluation modes for real click alignment.                      |
+
+## 📈 Evaluation & Analysis
+
+### Comprehensive Metrics
+
+- **Precision@K / Recall@K** – computed each cycle (`k` defaults to 10; override with `--k`).
+- **Cost Tracking** – per‑cycle token & \$ summary via `budget_monitor`.
+- **(Planned) Method‑Distribution** – future work: log source (tag / semantic / rule / hot) for each recalled candidate to analyse mix ratios.
+
+### Prompt Strategy Templates
+
+_For human readers / prompt engineers only._  
+See [`prompt_strategy_templates.md`](./prompt_strategy_templates.md) for reference patterns:
+
+- LLM re‑rank prompt used in `RecommendationAgent`.
+- Cold‑start weighting & tag‑upweight logic reflected in `RecommendationAgent._score_candidates()`.
+- Diversity enhancement and evaluation prompts mirror the templates, but **are embedded as Python string constants**, not imported from the Markdown file.
+
+## 📄 License
+
+MIT License - see LICENSE file for details.
+
+---
+
+**Built with ❤️ for the Sekai community**
+
+---
