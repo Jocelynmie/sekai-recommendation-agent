@@ -4,6 +4,7 @@
 
 A sophisticated recommendation system that leverages the latest LLMs and AI frameworks to provide personalized story recommendations for Sekai users. This project demonstrates deep content understanding, advanced prompt engineering, and robust evaluation methodologies.
 
+
 ## Directory Structure
 
 - `src/agents/` — Core agent implementations
@@ -24,6 +25,8 @@ A sophisticated recommendation system that leverages the latest LLMs and AI fram
 | 2     | **0.760** | **0.760** | +0.220    |
 
 > **Best Prompt**: v2.0 (Cycle 2) – +90% precision gain.
+
+---
 
 ## 🚀 Quick Start
 
@@ -53,6 +56,8 @@ Key dependencies:
 - **数据处理**: `pandas` / `numpy`
 - **日志和配置**: `loguru` / `python-dotenv`
 - **工具类**: `tqdm`
+
+---
 
 ## Architecture & Agent Roles
 
@@ -108,6 +113,8 @@ Key dependencies:
 - **Prompt Optimizer**: Dynamically updates prompts and strategies based on evaluation feedback.
 - **BudgetMonitor**: Monitors and controls API usage and cost.
 
+---
+
 ## Caching Strategy
 
 - **Embedding Cache**:
@@ -134,6 +141,8 @@ Key dependencies:
   - If the expected gain in precision/recall falls below a configurable threshold (`min_delta`) for multiple rounds, the optimizer triggers an "explore" strategy or halts further prompt updates.
   - This ensures efficient convergence and avoids overfitting to noise.
 
+---
+
 ## 🤖 Model Selection Strategy
 
 Our system uses a **cutting-edge, cost-effective model stack** with the latest AI models from multiple vendors:
@@ -154,6 +163,8 @@ Our system uses a **cutting-edge, cost-effective model stack** with the latest A
 - **Performance**: 1.5×-2× speed improvement
 
 > 📖 **Detailed Analysis**: See [`MODEL_SELECTION_STRATEGY.md`](./MODEL_SELECTION_STRATEGY.md) for comprehensive model selection rationale and cost analysis.
+
+---
 
 ## 📊 Performance & Robustness
 
@@ -176,7 +187,9 @@ Our system uses a **cutting-edge, cost-effective model stack** with the latest A
 | **Fallback**         | `--mode vector` or auto-switch to vector ranking when API-Key missing.                                |
 | **Error Handling**   | Each LLM call `max_retries=3` with exponential backoff; multiple failures throw `ModelError` and log. |
 | **Cost Monitoring**  | `budget_monitor` aggregates tokens & \$ per cycle, output at log end.                                 |
-| **Cross-Validation** | Supports `llm`, `keyword`, `vector` 3 evaluation modes for real click alignment.                      |
+| **Cross-Validation** | Supports `llm`, `keyword`, `vector` 3 evaluation modes for real click alignment. 
+                     |
+---
 
 ## 📈 Evaluation & Analysis
 
@@ -194,6 +207,8 @@ See [`prompt_strategy_templates.md`](./prompt_strategy_templates.md) for referen
 - LLM re‑rank prompt used in `RecommendationAgent`.
 - Cold‑start weighting & tag‑upweight logic reflected in `RecommendationAgent._score_candidates()`.
 - Diversity enhancement and evaluation prompts mirror the templates, but **are embedded as Python string constants**, not imported from the Markdown file.
+
+---
 
 ## 📄 License
 
