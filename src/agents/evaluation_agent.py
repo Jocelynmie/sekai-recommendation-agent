@@ -1,269 +1,341 @@
 """
-Evaluation Agent
-================
-1. 读取 **完整用户画像**（users.csv 中的一行 / dict）
-2. **模拟**用户首屏勾选的 tags
-3. 调用传入的 RecommendationAgent 获取 top‑k 推荐
-4. 用同一批 tags + 全量 story pool 计算 "ground‑truth" 列表
-5. 输出 precision@k 及相关明细
-
-依赖：
-    - BaseAgent     (src/agents/base.py)
-    - create_evaluation_agent (src/models/model_wrapper.py)
-    - RecommendationAgent    (由调用方注入，方便测试 & 解耦外部 API)
+Evaluation Agent for Recommendation System
+Evaluates recommendation quality using multiple methods
 """
 
 from __future__ import annotations
 
 import json
-import re
-from typing import List, Dict, Any, Optional
-from dataclasses import dataclass, asdict
+import logging
+import random
+import statistics
 from pathlib import Path
-
-import pandas as pd
-from loguru import logger #type: ignore
+from typing import Any, Dict, List, Optional, Tuple
+from dataclasses import dataclass
 import numpy as np
+import pandas as pd
 
-# 如有可用则导入sentence-transformers，否则提示安装
+# Import sentence-transformers if available, otherwise prompt for installation
 try:
     from sentence_transformers import SentenceTransformer
+    SENTENCE_TRANSFORMERS_AVAILABLE = True
 except ImportError:
-    SentenceTransformer = None
-    logger.warning("sentence-transformers 未安装，embedding通道不可用")
+    SENTENCE_TRANSFORMERS_AVAILABLE = False
+    print("Warning: sentence-transformers not installed. Install with: pip install sentence-transformers")
 
-# 将项目根目录加入 sys.path，便于 tests 直接运行
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+# Add project root to sys.path for direct test execution
 import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+from .base import BaseAgent
+from .recommendation_agent import RecommendationAgent
+from src.models.model_wrapper import BaseModelWrapper
 
-from src.agents.base import BaseAgent
-from src.models.model_wrapper import create_evaluation_agent
+logger = logging.getLogger(__name__)
 
 
 @dataclass
-class EvalResult:
-    """Evaluation 输出结构，方便类型提示与序列化"""
+class EvaluationResponse:
+    """Evaluation output structure for type hints and serialization"""
     user_id: int
-    simulated_tags: List[str]
-    recommended: List[int]
+    precision: float
+    recall: float
+    method_used: str
     ground_truth: List[int]
-    precision_at_k: float
-    recall_at_k: float
-    model_used: str
-    method_used: str  # "llm" or "keyword"
+    recommended: List[int]
+    user_tags: List[str]
+    model_used: str = ""
+    reasoning: str = ""
 
 
-# 评估指标注册表和注册装饰器
-METRIC_REGISTRY = {}
+# Evaluation metrics registry and registration decorator
+EVALUATION_METRICS_REGISTRY = {}
 
-def register_metric(name):
+def register_evaluation_metric(name):
     def decorator(fn):
-        METRIC_REGISTRY[name] = fn
+        EVALUATION_METRICS_REGISTRY[name] = fn
         return fn
     return decorator
 
-@register_metric("precision")
-def precision_at_k(recommended, ground_truth, k):
-    if not recommended:
-        return 0.0
-    hit = len(set(recommended[:k]) & set(ground_truth))
-    return hit / k
-
-@register_metric("recall")
-def recall_at_k(recommended, ground_truth, k):
-    if not ground_truth:
-        return 0.0
-    hit = len(set(recommended[:k]) & set(ground_truth))
-    return hit / len(ground_truth)
-
-@register_metric("f1")
-def f1_at_k(recommended, ground_truth, k):
-    p = precision_at_k(recommended, ground_truth, k)
-    r = recall_at_k(recommended, ground_truth, k)
-    return 2 * p * r / (p + r) if (p + r) > 0 else 0.0
-
 
 class EvaluationAgent(BaseAgent):
-    """负责评估 RecommendationAgent 输出质量"""
+    """Responsible for evaluating RecommendationAgent output quality"""
 
     def __init__(
         self,
         users_df: pd.DataFrame,
         contents_df: pd.DataFrame,
-        recommendation_agent: BaseAgent,
-        model_wrapper=None,
-        k: int = 10,
-        use_llm_for_ground_truth: bool = False,
+        recommendation_agent: RecommendationAgent,
+        use_llm_for_ground_truth: bool = True,
         use_llm_for_tag_simulation: bool = True,
         eval_mode: str = "llm",
+        k: int = 10,
+        model_wrapper=None,
+        name="EvaluationAgent",
+        config=None,
     ):
-        if model_wrapper is None:
-            model_wrapper = create_evaluation_agent()
-
-        super().__init__(
-            name="EvaluationAgent",
-            model_wrapper=model_wrapper,
-            config={
-                "system_prompt": self._system_prompt(),
-                "temperature": 0.3,
-            },
-        )
-
+        super().__init__(name, model_wrapper, config)
         self.users_df = users_df
         self.contents_df = contents_df
-        self.reco_agent = recommendation_agent
-        self.k = k
+        self.recommendation_agent = recommendation_agent
         self.use_llm_for_ground_truth = use_llm_for_ground_truth
         self.use_llm_for_tag_simulation = use_llm_for_tag_simulation
         self.eval_mode = eval_mode
+        self.k = k
+        
+        # Initialize sentence transformer if available
+        if SENTENCE_TRANSFORMERS_AVAILABLE:
+            self.sentence_transformer = SentenceTransformer('all-MiniLM-L6-v2')
+        else:
+            self.sentence_transformer = None
+            
+        # Preprocess: extract all possible tags
+        self.all_tags = self._extract_all_tags()
+        
+        # Initialize model for evaluation
+        if model_wrapper:
+            self.model = model_wrapper
+        else:
+            from src.models.model_wrapper import create_evaluation_agent
+            self.model = create_evaluation_agent()
 
-        # 预处理：提取所有可能的标签
-        self._all_user_tags = self._extract_all_tags()
-
-        self._embedding_model = None
-        self._content_embeddings = None
-        self._content_id_list = None
-        self._build_content_embeddings()
-
-        logger.info(
-            f"EvaluationAgent 就绪 | 用户数: {len(users_df)} | 内容数: {len(contents_df)} | "
-            f"评估模型: {model_wrapper.model_name} | LLM GT: {use_llm_for_ground_truth} | "
-            f"LLM Tags: {use_llm_for_tag_simulation}"
+    # --------------------------------------------------------------------- #
+    # -------------------------- Core Process Methods ----------------------------- #
+    # --------------------------------------------------------------------- #
+    
+    def evaluate_user(self, user_id: int) -> EvaluationResponse:
+        """Evaluate recommendations for a single user"""
+        # Write interaction log
+        self.log_interaction({"user_id": user_id}, {})
+        
+        # Get user tags
+        user_tags = self._get_user_tags(user_id)
+        
+        # Generate ground truth
+        ground_truth = self._generate_ground_truth(user_id, user_tags)
+        
+        # Get recommendation results
+        recommendation_result = self.recommendation_agent.recommend(user_tags, self.k)
+        recommended = recommendation_result.get("content_ids", [])
+        
+        # Calculate metrics
+        precision, recall = self._calculate_metrics(ground_truth, recommended)
+        
+        # Determine method used
+        method_used = self._determine_method()
+        
+        return EvaluationResponse(
+            user_id=user_id,
+            precision=precision,
+            recall=recall,
+            method_used=method_used,
+            ground_truth=ground_truth,
+            recommended=recommended,
+            user_tags=user_tags,
+            model_used=self.model.model_name if hasattr(self.model, 'model_name') else "unknown",
+            reasoning=""
         )
-
-    # --------------------------------------------------------------------- #
-    # --------------------------- 核心流程方法 ----------------------------- #
-    # --------------------------------------------------------------------- #
 
     def process(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        BaseAgent 统一入口：`input_data` 需包含 `user_profile` (dict)
-        """
-        user_profile: Dict[str, Any] = input_data["user_profile"]
-        result = self.evaluate(user_profile)
+        """BaseAgent standard interface implementation"""
+        user_id = input_data.get("user_id")
+        if user_id is None:
+            raise ValueError("user_id is required in input_data")
+        
+        result = self.evaluate_user(user_id)
+        return {
+            "user_id": result.user_id,
+            "precision": result.precision,
+            "recall": result.recall,
+            "method_used": result.method_used,
+            "ground_truth": result.ground_truth,
+            "recommended": result.recommended,
+            "user_tags": result.user_tags,
+            "model_used": result.model_used,
+            "reasoning": result.reasoning
+        }
 
-        # 写交互日志
-        self.log_interaction(user_profile, asdict(result))
-        return asdict(result)
-
-    # ---------------------------- 标签处理 ---------------------------------- #
+    # --------------------------------------------------------------------- #
+    # ---------------------------- Tag Processing ---------------------------------- #
+    # --------------------------------------------------------------------- #
     
-    def _extract_all_tags(self) -> set:
-        """从所有用户数据中提取所有可能的标签"""
+    def _extract_all_tags(self) -> List[str]:
+        """Extract all possible tags from all user data"""
         all_tags = set()
-        for _, user in self.users_df.iterrows():
-            tags = [t.strip().lower() for t in str(user.get('user_interest_tags', '')).split(',') if t.strip()]
-            all_tags.update(tags)
-        return all_tags
+        
+        # Extract from user tags
+        if 'tags' in self.users_df.columns:
+            for tags_str in self.users_df['tags'].dropna():
+                if isinstance(tags_str, str):
+                    tags = [tag.strip() for tag in tags_str.split(',')]
+                    all_tags.update(tags)
+        
+        # Extract from content tags
+        if 'tags' in self.contents_df.columns:
+            for tags_str in self.contents_df['tags'].dropna():
+                if isinstance(tags_str, str):
+                    tags = [tag.strip() for tag in tags_str.split(',')]
+                    all_tags.update(tags)
+        
+        return sorted(list(all_tags))
 
-    def simulate_tags(self, user_profile: Dict[str, Any]) -> List[str]:
-        # 省费模式：直接读取 sim_tags
-        if 'sim_tags' in user_profile and user_profile['sim_tags']:
-            if isinstance(user_profile['sim_tags'], str):
-                tags = [t.strip().lower() for t in user_profile['sim_tags'].split(',') if t.strip()]
-            else:
-                tags = [t.strip().lower() for t in user_profile['sim_tags'] if t.strip()]
-            return tags[:7]
-        # 读取原始用户兴趣标签
-        elif 'user_interest_tags' in user_profile and user_profile['user_interest_tags']:
-            if isinstance(user_profile['user_interest_tags'], str):
-                tags = [t.strip().lower() for t in user_profile['user_interest_tags'].split(',') if t.strip()]
-            else:
-                tags = [t.strip().lower() for t in user_profile['user_interest_tags'] if t.strip()]
-            return tags[:7]
-        # fallback: 兼容老逻辑
+    def _get_user_tags(self, user_id: int) -> List[str]:
+        """Get user interest tags"""
+        user_row = self.users_df[self.users_df['user_id'] == user_id]
+        if user_row.empty:
+            return []
+        
+        # Cost-saving mode: directly read sim_tags
+        if 'sim_tags' in user_row.columns and not user_row['sim_tags'].iloc[0] is None:
+            sim_tags_str = user_row['sim_tags'].iloc[0]
+            if isinstance(sim_tags_str, str) and sim_tags_str.strip():
+                return [tag.strip() for tag in sim_tags_str.split(',')]
+        
+        # Read original user interest tags
+        tags_str = user_row['tags'].iloc[0] if 'tags' in user_row.columns else ""
+        if isinstance(tags_str, str) and tags_str.strip():
+            return [tag.strip() for tag in tags_str.split(',')]
+        
+        # Fallback: compatible with old logic
         return []
 
-    # ---------------------------- Ground Truth 生成 ---------------------------------- #
-
-    def _build_content_embeddings(self):
-        if SentenceTransformer is None:
-            logger.warning("sentence-transformers 未安装，embedding通道不可用")
-            return
-        logger.info("[Eval] 构建内容embedding...")
-        content_texts = []
-        content_ids = []
-        for _, row in self.contents_df.iterrows():
-            cid = int(row["content_id"])
-            title = str(row.get("title", "")).strip()
-            intro = str(row.get("intro", "")).strip()
-            text = f"{title} {intro}".strip()
-            if text:
-                content_texts.append(text)
-                content_ids.append(cid)
-        if not content_texts:
-            logger.warning("[Eval] 无有效内容文本，跳过embedding构建")
-            return
-        self._embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-        self._content_embeddings = self._embedding_model.encode(content_texts, show_progress_bar=False)
-        self._content_id_list = content_ids
-        logger.info(f"[Eval] embedding构建完成，内容数: {len(content_ids)}")
-
-    def _embedding_recall(self, user_tags: List[str], top_n: int = 50) -> List[int]:
-        if self._embedding_model is None or self._content_embeddings is None:
+    # --------------------------------------------------------------------- #
+    # ---------------------------- Ground Truth Generation ---------------------------------- #
+    # --------------------------------------------------------------------- #
+    
+    def _generate_ground_truth(self, user_id: int, user_tags: List[str]) -> List[int]:
+        """Generate ground truth recommendations for evaluation"""
+        if not user_tags:
             return []
-        query_text = " ".join(user_tags)
-        query_emb = self._embedding_model.encode([query_text])[0]
-        # 计算cosine相似度
-        scores = np.dot(self._content_embeddings, query_emb) / (
-            np.linalg.norm(self._content_embeddings, axis=1) * np.linalg.norm(query_emb) + 1e-8)
-        top_idx = np.argsort(scores)[::-1][:top_n]
-        return [self._content_id_list[i] for i in top_idx]
-
-    def make_ground_truth(self, user_profile: Dict[str, Any], top_n: int) -> List[int]:
-        # 省费模式：直接用embedding余弦排序
-        tags = self.simulate_tags(user_profile)
-        candidate_ids = self._embedding_recall(tags, top_n=150)
-        return candidate_ids[:top_n]
-
-    # ---------------------------- 主评估流程 ---------------------------------- #
-
-    def evaluate(self, user_profile: Dict[str, Any]) -> EvalResult:
+        
+        if self.eval_mode == "llm" and self.use_llm_for_ground_truth:
+            return self._generate_llm_ground_truth(user_tags)
+        elif self.eval_mode == "vector":
+            return self._generate_vector_ground_truth(user_tags)
+        else:
+            return self._generate_keyword_ground_truth(user_tags)
+    
+    def _generate_llm_ground_truth(self, user_tags: List[str]) -> List[int]:
+        """Generate ground truth using LLM"""
+        if not self.model:
+            return self._generate_keyword_ground_truth(user_tags)
+        
+        # Create prompt for LLM
+        prompt = f"""
+        Given user interest tags: {', '.join(user_tags)}
+        
+        Please select the top {self.k} most relevant story IDs from the following candidates.
+        Consider the user's interests and preferences.
+        
+        Available stories:
+        {self._get_story_summaries()}
+        
+        Return only a JSON list of integers representing the story IDs, ordered by relevance.
         """
-        综合调用以上步骤完成一次评估
-        """
-        # 1. 模拟标签
-        tags = self.simulate_tags(user_profile)
-        logger.debug(f"Simulated tags for user {user_profile.get('user_id')}: {tags}")
+        
+        try:
+            response = self.model.generate(prompt)
+            # Parse JSON response
+            import json
+            story_ids = json.loads(response)
+            return story_ids[:self.k]
+        except Exception as e:
+            logger.warning(f"LLM ground truth generation failed: {e}")
+            return self._generate_keyword_ground_truth(user_tags)
+    
+    def _generate_vector_ground_truth(self, user_tags: List[str]) -> List[int]:
+        """Generate ground truth using vector similarity"""
+        if not self.sentence_transformer:
+            return self._generate_keyword_ground_truth(user_tags)
+        
+        # Calculate cosine similarity
+        user_embedding = self.sentence_transformer.encode(' '.join(user_tags))
+        
+        # Cost-saving mode: directly use embedding cosine ranking
+        similarities = []
+        for _, content in self.contents_df.iterrows():
+            content_text = f"{content.get('title', '')} {content.get('introduction', '')}"
+            content_embedding = self.sentence_transformer.encode(content_text)
+            similarity = np.dot(user_embedding, content_embedding) / (np.linalg.norm(user_embedding) * np.linalg.norm(content_embedding))
+            similarities.append((content['content_id'], similarity))
+        
+        # Sort by similarity and return top k
+        similarities.sort(key=lambda x: x[1], reverse=True)
+        return [content_id for content_id, _ in similarities[:self.k]]
+    
+    def _generate_keyword_ground_truth(self, user_tags: List[str]) -> List[int]:
+        """Generate ground truth using keyword matching"""
+        scores = []
+        for _, content in self.contents_df.iterrows():
+            content_tags = []
+            if 'tags' in content and isinstance(content['tags'], str):
+                content_tags = [tag.strip() for tag in content['tags'].split(',')]
+            
+            # Calculate overlap score
+            overlap = len(set(user_tags) & set(content_tags))
+            scores.append((content['content_id'], overlap))
+        
+        # Sort by overlap score and return top k
+        scores.sort(key=lambda x: x[1], reverse=True)
+        return [content_id for content_id, _ in scores[:self.k]]
+    
+    def _get_story_summaries(self) -> str:
+        """Get story summaries for LLM prompt"""
+        summaries = []
+        for _, content in self.contents_df.head(50).iterrows():  # Limit to first 50 for efficiency
+            title = content.get('title', '')
+            intro = content.get('introduction', '')
+            content_id = content['content_id']
+            summaries.append(f"ID {content_id}: {title} - {intro[:100]}...")
+        return '\n'.join(summaries)
 
-        # 2. 获取推荐结果
-        reco_output = self.reco_agent.process(
-            {"user_tags": tags, "num_recommendations": self.k}
-        )
-        recommended_ids = reco_output.get("content_ids", [])[: self.k]
-        logger.debug(f"Recommended IDs: {recommended_ids}")
-
-        # 3. 生成 ground truth
-        ground_truth = self.make_ground_truth(user_profile, self.k)
-        logger.debug(f"Ground truth IDs: {ground_truth}")
-
-        # 4. 计算指标
-        k = self.k
-        metrics = {}
-        for metric_name in ["precision", "recall", "f1"]:
-            metric_fn = METRIC_REGISTRY[metric_name]
-            metrics[f"{metric_name}_at_k"] = metric_fn(recommended_ids, ground_truth, k)
-
-        # 5. 确定使用的方法
-        method_used = reco_output.get("method_used", "unknown")
-
-        print("∩(recommended, GT) =", len(set(recommended_ids) & set(ground_truth)))
-        print("recommended =", recommended_ids)
-        print("ground_truth =", ground_truth)
-
-        return EvalResult(
-            user_id=int(user_profile.get("user_id", -1)),
-            simulated_tags=tags,
-            recommended=recommended_ids,
-            ground_truth=ground_truth,
-            precision_at_k=metrics["precision_at_k"],
-            recall_at_k=metrics["recall_at_k"],
-            model_used=self.model.model_name,
-            method_used=method_used
-        )
+    # --------------------------------------------------------------------- #
+    # ---------------------------- Main Evaluation Process ---------------------------------- #
+    # --------------------------------------------------------------------- #
+    
+    def _simulate_user_tags(self, user_id: int) -> List[str]:
+        """1. Simulate user tags"""
+        return self._get_user_tags(user_id)
+    
+    def _get_recommendation_results(self, user_tags: List[str]) -> Dict[str, Any]:
+        """2. Get recommendation results"""
+        return self.recommendation_agent.recommend(user_tags, self.k)
+    
+    def _generate_ground_truth_for_eval(self, user_id: int, user_tags: List[str]) -> List[int]:
+        """3. Generate ground truth"""
+        return self._generate_ground_truth(user_id, user_tags)
+    
+    def _calculate_evaluation_metrics(self, ground_truth: List[int], recommended: List[int]) -> Tuple[float, float]:
+        """4. Calculate metrics"""
+        return self._calculate_metrics(ground_truth, recommended)
+    
+    def _determine_evaluation_method(self) -> str:
+        """5. Determine method used"""
+        return self._determine_method()
+    
+    def _calculate_metrics(self, ground_truth: List[int], recommended: List[int]) -> Tuple[float, float]:
+        """Calculate precision and recall"""
+        if not ground_truth or not recommended:
+            return 0.0, 0.0
+        
+        # Calculate intersection
+        intersection = set(ground_truth) & set(recommended)
+        
+        # Calculate precision and recall
+        precision = len(intersection) / len(recommended) if recommended else 0.0
+        recall = len(intersection) / len(ground_truth) if ground_truth else 0.0
+        
+        return precision, recall
+    
+    def _determine_method(self) -> str:
+        """Determine which evaluation method was used"""
+        if self.eval_mode == "llm" and self.use_llm_for_ground_truth:
+            return "llm_evaluation"
+        elif self.eval_mode == "vector":
+            return "vector_evaluation"
+        else:
+            return "keyword_evaluation"
 
     # --------------------------------------------------------------------- #
     # -------------------------- Prompt Section --------------------------- #
@@ -271,7 +343,7 @@ class EvaluationAgent(BaseAgent):
 
     @staticmethod
     def _system_prompt() -> str:
-        """供高级 LLM 判断 ground‑truth 时使用"""
+        """For advanced LLM to judge ground-truth"""
         return (
             "You are a senior evaluation agent for a role‑play story platform. "
             "You will analyze user preferences and story content to make precise matches. "

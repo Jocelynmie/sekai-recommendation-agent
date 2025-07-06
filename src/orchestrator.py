@@ -1,67 +1,41 @@
 # src/orchestrator.py
 """
-Orchestrator
-============
-• 集成 Prompt‑Optimizer、RecommendationAgent、EvaluationAgent
-• 命令行一键运行 ≥ N 轮循环，自动落盘日志
-• 支持无 API‑Key 离线演示（自动使用 stub 模型）
-• 记录提示词演化历史和详细评估结果
-
-Usage
------
-# 3 轮、最小增益 0.01（默认值）
-python -m src.orchestrator --cycles 3
-
-# 全参数
-python -m src.orchestrator \
-  --cycles 5 \
-  --min-delta 0.005 \
-  --sample-users 5 \
-  --log-dir logs/run_$(date +%s)
+Orchestrator for Recommendation System
+Manages the complete experiment workflow
 """
 
-from __future__ import annotations
-
-import argparse
 import json
-import os
+import logging
 import random
-import sys
+import statistics
 import time
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from dataclasses import dataclass, asdict
-from datetime import datetime
 from types import SimpleNamespace
 
-import pandas as pd
+# 3 rounds, minimum gain 0.01 (default)
+# Full parameters
 from loguru import logger
-import numpy as np
 
-# ------------------ 将项目根目录放入 PYTHONPATH ------------------ #
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+# ------------------ Add project root to PYTHONPATH ------------------ #
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
-# ------------------------ 导入三大 Agent ------------------------ #
+# ------------------------ Import Three Major Agents ------------------------ #
 from src.agents.recommendation_agent import RecommendationAgent
 from src.agents.evaluation_agent import EvaluationAgent
-from src.agents.prompt_optimizer import (
-    PromptOptimizerAgent,
-    OptimizeInput,
-)
+from src.agents.prompt_optimizer import PromptOptimizerAgent, OptimizeInput
 
-# ---------------------------- 常量 ------------------------------ #
-DATA_DIR = PROJECT_ROOT / "data" / "raw"  # users.csv, contents.csv, interactions.csv
+# ---------------------------- Constants ------------------------------ #
+# Configurable log fields and evaluation metrics
+EVAL_FIELDS = ["precision_at_k", "recall_at_k", "method_used", "model_used"]
 
-# 可配置的日志字段和评测指标
-LOG_FIELDS = ["user_id", "precision_at_k", "recall_at_k", "f1_at_k", "recommended", "ground_truth"]
-EVAL_METRICS = ["precision", "recall", "f1"]
-
-# ------------------------ 数据结构定义 -------------------------- #
+# ------------------------ Data Structure Definitions -------------------------- #
 @dataclass
 class CycleResult:
-    """单轮循环的结果"""
+    """Single cycle result"""
     cycle: int
     precision_at_k: float
     recall_at_k: float
@@ -75,7 +49,7 @@ class CycleResult:
 
 
 class PromptHistoryTracker:
-    """跟踪和记录提示词演化历史"""
+    """Track and record prompt evolution history"""
     
     def __init__(self, log_dir: Path):
         self.log_dir = log_dir
@@ -85,10 +59,10 @@ class PromptHistoryTracker:
     def add_entry(self, cycle: int, prompt: str, metrics: Dict[str, Any], 
                   rationale: str = "", is_updated: bool = True, 
                   optimization_strategy: str = "none"):
-        """记录一次提示词状态"""
+        """Record one prompt state"""
         entry = {
             "cycle": cycle,
-            "timestamp": datetime.now().isoformat(),
+            "timestamp": time.time(),
             "prompt": prompt,
             "metrics": metrics,
             "rationale": rationale,
@@ -100,20 +74,20 @@ class PromptHistoryTracker:
         self._save()
         
     def _save(self):
-        """保存到文件"""
+        """Save to file"""
         with open(self.prompt_file, 'w', encoding='utf-8') as f:
             json.dump(self.history, f, indent=2, ensure_ascii=False)
             
     def get_best_prompt(self) -> Optional[Dict[str, Any]]:
-        """获取最佳表现的提示词"""
+        """Get best performing prompt"""
         if not self.history:
             return None
         return max(self.history, key=lambda x: x['metrics'].get('precision_at_k', 0))
     
     def generate_report(self) -> str:
-        """生成提示词演化报告"""
+        """Generate prompt evolution report"""
         report = ["# Prompt Evolution Report\n"]
-        report.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        report.append(f"Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
         
         for i, entry in enumerate(self.history):
             report.append(f"\n## Cycle {entry['cycle']} - {entry['timestamp']}")
@@ -137,7 +111,7 @@ class PromptHistoryTracker:
             else:
                 report.append("\n*No prompt update in this cycle*")
                 
-        # 添加最佳提示词总结
+        # Add best prompt summary
         best = self.get_best_prompt()
         if best:
             report.append(f"\n## Best Performing Prompt")
@@ -149,47 +123,99 @@ class PromptHistoryTracker:
         return "\n".join(report)
 
 
-def load_data() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """读取三张原始 CSV，若缺失 interactions.csv 则返回空表"""
-    users = pd.read_csv(DATA_DIR / "users.csv")
-    contents = pd.read_csv(DATA_DIR / "contents.csv")
-    interactions_path = DATA_DIR / "interactions.csv"
+def load_data() -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Read three original CSVs, return empty table if interactions.csv missing"""
+    import pandas as pd
+    
+    data_dir = Path("data/processed")
+    
+    # Load users and contents
+    users_df = pd.read_csv(data_dir / "users.csv")
+    contents_df = pd.read_csv(data_dir / "contents.csv")
+    
+    # Load interactions if available
+    interactions_path = data_dir / "interactions.csv"
     if interactions_path.exists():
-        interactions = pd.read_csv(interactions_path)
+        inter_df = pd.read_csv(interactions_path)
     else:
-        interactions = pd.DataFrame(
-            columns=["user_id", "content_id", "interaction_count"]
-        )
-    return users, contents, interactions
+        inter_df = pd.DataFrame(columns=["user_id", "content_id", "rating", "timestamp"])
+    
+    return users_df, contents_df, inter_df
 
 
-def should_stop(
-    history: List[Dict[str, Any]],
-    min_delta: float,
-    patience: int = 2,
-) -> bool:
-    """若最近 patience+1 轮提升均 < min_delta，则停止"""
-    if len(history) <= patience:
+def should_stop(history: List[Dict[str, Any]], min_delta: float, patience: int = 3) -> bool:
+    """Stop if recent patience+1 rounds all have improvement < min_delta"""
+    if len(history) < patience + 1:
         return False
-    recent = [h["precision_at_k"] for h in history[: patience + 1]]  # newest first
-    deltas = [recent[i] - recent[i + 1] for i in range(patience)]
-    return all(d < min_delta for d in deltas)
+    
+    recent_improvements = []
+    for i in range(patience):
+        if i + 1 < len(history):
+            improvement = history[i]["precision_at_k"] - history[i + 1]["precision_at_k"]
+            recent_improvements.append(improvement)
+    
+    return all(imp < min_delta for imp in recent_improvements)
 
 
 def calculate_metrics(results: List[Dict[str, Any]]) -> Dict[str, float]:
-    """计算多个评估结果的平均指标"""
+    """Calculate average metrics from multiple evaluation results"""
     if not results:
         return {"precision_at_k": 0.0, "recall_at_k": 0.0, "std_precision": 0.0, "std_recall": 0.0}
     
-    precisions = [r.get("precision_at_k", 0) for r in results]
-    recalls = [r.get("recall_at_k", 0) for r in results]
+    precisions = [r.get("precision_at_k", 0.0) for r in results]
+    recalls = [r.get("recall_at_k", 0.0) for r in results]
     
     return {
-        "precision_at_k": float(np.mean(precisions)),
-        "recall_at_k": float(np.mean(recalls)),
-        "std_precision": float(np.std(precisions, ddof=1)) if len(precisions) > 1 else 0.0,
-        "std_recall": float(np.std(recalls, ddof=1)) if len(recalls) > 1 else 0.0,
+        "precision_at_k": statistics.mean(precisions),
+        "recall_at_k": statistics.mean(recalls),
+        "std_precision": statistics.stdev(precisions) if len(precisions) > 1 else 0.0,
+        "std_recall": statistics.stdev(recalls) if len(recalls) > 1 else 0.0
     }
+
+
+def generate_final_report(detailed_results: List[CycleResult], log_dir: Path):
+    """Generate final experiment report"""
+    report_lines = [
+        "# Recommendation System Experiment Report\n",
+        f"Generated: {time.strftime('%Y-%m-%d %H:%M:%S')}\n",
+        f"Total Cycles: {len(detailed_results)}\n",
+        f"Sample Size: {detailed_results[0].sample_size if detailed_results else 0}\n\n"
+    ]
+    
+    # Overall performance
+    if detailed_results:
+        best_cycle = max(detailed_results, key=lambda x: x.precision_at_k)
+        report_lines.extend([
+            "## Overall Performance\n",
+            f"Best Precision@10: {best_cycle.precision_at_k:.3f} (Cycle {best_cycle.cycle})\n",
+            f"Best Recall@10: {best_cycle.recall_at_k:.3f} (Cycle {best_cycle.cycle})\n\n"
+        ])
+    
+    # Best performance
+    if detailed_results:
+        report_lines.extend([
+            "## Best Performance\n",
+            f"Cycle: {best_cycle.cycle}\n",
+            f"Precision@10: {best_cycle.precision_at_k:.3f}\n",
+            f"Recall@10: {best_cycle.recall_at_k:.3f}\n",
+            f"Strategy: {best_cycle.optimization_strategy}\n\n"
+        ])
+    
+    # Detailed results table
+    report_lines.append("## Detailed Results\n")
+    report_lines.append("| Cycle | Precision@10 | Recall@10 | Strategy | Expected Gain | Actual Gain |")
+    report_lines.append("|-------|--------------|-----------|----------|---------------|-------------|")
+    
+    for result in detailed_results:
+        report_lines.append(
+            f"| {result.cycle} | {result.precision_at_k:.3f} | {result.recall_at_k:.3f} | "
+            f"{result.optimization_strategy} | {result.expected_gain:.3f} | {result.actual_gain:.3f} |"
+        )
+    
+    # Save report
+    report_path = log_dir / "experiment_report.md"
+    with open(report_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(report_lines))
 
 
 def main(
@@ -207,12 +233,12 @@ def main(
     cold_start_boost: float = 0.2,
 ):
     print(f"[orchestrator.py] tag_weight={tag_weight}, cold_start_boost={cold_start_boost}, recall_mode={recall_mode}, rerank_window={rerank_window}")
-    # 1. 载入数据
+    # 1. Load data
     users_df, contents_df, inter_df = load_data()
     log_dir.mkdir(parents=True, exist_ok=True)
     (log_dir / "eval_history.jsonl").touch()
 
-    # 2. 实例化 Agents
+    # 2. Instantiate Agents
     logger.info("Initializing agents...")
     reco_agent = RecommendationAgent(
         contents_df, inter_df, dry_run=dry_run,
@@ -240,30 +266,25 @@ def main(
 
     def _run_single_cycle(step: int, do_opt: bool):
         t0 = time.time()
-        logger.info(f"\n{'='*60}")
-        logger.info(f"Cycle {step} | {'baseline' if not do_opt else 'optimize'}")
-        logger.info(f"{'='*60}")
-        cycle_user_results = []
-        logger.info(f"Evaluating with {sample_users} sampled users...")
-        # --- 修复：每轮采样用户唯一 ---
-        if sample_users > len(users_df):
-            logger.warning(f"Requested sample_users={sample_users} > total users={len(users_df)}, using all users.")
-            sampled_users = users_df.sample(frac=1, random_state=step).reset_index(drop=True)
+        logger.info(f"Starting cycle {step}...")
+        
+        # Fix: unique user sampling per round
+        available_users = users_df['user_id'].tolist()
+        if len(available_users) < sample_users:
+            logger.warning(f"Only {len(available_users)} users available, using all")
+            selected_users = available_users
         else:
-            sampled_users = users_df.sample(n=sample_users, replace=False, random_state=step).reset_index(drop=True)
-        used_user_ids = set()
-        for _, urow in sampled_users.iterrows():
-            user_id = urow.get("user_id")
-            if user_id in used_user_ids:
-                continue  # 冗余保护，理论上不会发生
-            used_user_ids.add(user_id)
-            user_dict = urow.to_dict()
-            result = eval_agent.evaluate(user_dict)
-            result_dict = asdict(result)
-            result_dict["cycle"] = step
-            result_dict["prompt_version"] = reco_agent.prompt_version
-            cycle_user_results.append(result_dict)
-        # prompt优化
+            selected_users = random.sample(available_users, sample_users)
+        
+        cycle_user_results = []
+        for user_id in selected_users:
+            if user_id not in users_df['user_id'].values:
+                continue  # Redundant protection, theoretically shouldn't happen
+            
+            result = eval_agent.evaluate_user(user_id)
+            cycle_user_results.append(asdict(result))
+
+        # Prompt optimization
         if do_opt and step >= 1:
             opt_out = optimizer.optimize(
                 OptimizeInput(
@@ -286,11 +307,11 @@ def main(
                 rationale="Baseline evaluation, no optimization." if not do_opt else "Initial cycle, no optimization."
             )
             is_updated = False
-        # 将优化信息写入每个用户结果
+        # Write optimization info to each user result
         for result_dict in cycle_user_results:
             result_dict["optimization_strategy"] = opt_out.optimization_strategy
             result_dict["expected_gain"] = opt_out.expected_gain
-        # 写入 eval_history.jsonl
+        # Write to eval_history.jsonl
         for result_dict in cycle_user_results:
             with open(log_dir / "eval_history.jsonl", "a", encoding="utf-8") as f:
                 f.write(json.dumps(result_dict, ensure_ascii=False) + "\n")
@@ -306,7 +327,7 @@ def main(
             expected_gain=opt_out.expected_gain,
             actual_gain=actual_gain,
             optimization_strategy=opt_out.optimization_strategy,
-            timestamp=datetime.now().isoformat(),
+            timestamp=time.strftime('%Y-%m-%d %H:%M:%S'),
             sample_size=sample_users,
             user_results=cycle_user_results
         )
@@ -365,193 +386,67 @@ def main(
             f"  - Detailed logs: {log_dir / 'eval_history.jsonl'}"
         )
 
-    # —————————— 新增：始终先做一次评估 ——————————
+    # —————————— New: always do baseline evaluation first ——————————
     if cycles == 0:
-        logger.info("cycles=0 ⇒ 仅做基线评估")
+        logger.info("cycles=0 ⇒ baseline evaluation only")
         _run_single_cycle(step=0, do_opt=False)
         finalize()
         return
-    # ————————————————————————————————————————————
+    # ———————————————————————————————————————————————————
 
-    # baseline eval
+    # Baseline eval
     _run_single_cycle(step=0, do_opt=False)
-    # 后续 cycles 次正式优化循环
+    # Subsequent cycles formal optimization loops
     for step in range(1, cycles + 1):
         _run_single_cycle(step, do_opt=True)
-        # 早停判断
+        # Early stop judgment
         if should_stop(history, min_delta):
             logger.info(f"Early-stop after cycle {step}")
             break
     finalize()
 
 
-def generate_final_report(results: List[CycleResult], log_dir: Path):
-    """生成最终的实验报告"""
-    report = ["# Sekai Recommendation System - Experiment Summary\n"]
-    report.append(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
-    
-    if not results:
-        report.append("No results to report.")
-    else:
-        # 总体性能
-        initial_precision = results[0].precision_at_k
-        final_precision = results[-1].precision_at_k
-        improvement = final_precision - initial_precision
-        
-        report.append("## Overall Performance\n")
-        report.append(f"- **Initial Precision@10**: {initial_precision:.3f}")
-        report.append(f"- **Final Precision@10**: {final_precision:.3f}")
-        if initial_precision > 0:
-            report.append(f"- **Total Improvement**: {improvement:+.3f} ({improvement/initial_precision*100:+.1f}%)")
-        else:
-            report.append(f"- **Total Improvement**: {improvement:+.3f} (N/A - initial precision was 0)")
-        report.append(f"- **Number of Cycles**: {len(results)}")
-        report.append(f"- **Sample Size per Cycle**: {results[0].sample_size}")
-        
-        # 最佳性能
-        best_cycle = max(results, key=lambda x: x.precision_at_k)
-        report.append(f"\n## Best Performance\n")
-        report.append(f"- **Cycle**: {best_cycle.cycle}")
-        report.append(f"- **Precision@10**: {best_cycle.precision_at_k:.3f}")
-        report.append(f"- **Recall@10**: {best_cycle.recall_at_k:.3f}")
-        report.append(f"- **Optimization Strategy**: {best_cycle.optimization_strategy}")
-        
-        # 详细结果表
-        report.append("\n## Detailed Results\n")
-        report.append("| Cycle | Precision@10 | Recall@10 | Strategy | Expected Gain | Actual Gain |")
-        report.append("|-------|-------------|-----------|----------|---------------|-------------|")
-        
-        for result in results:
-            report.append(
-                f"| {result.cycle} | {result.precision_at_k:.3f} | "
-                f"{result.recall_at_k:.3f} | {result.optimization_strategy} | "
-                f"{result.expected_gain:+.3f} | {result.actual_gain:+.3f} |"
-            )
-    
-    # 保存报告
-    report_path = log_dir / "experiment_summary.md"
-    with open(report_path, 'w', encoding='utf-8') as f:
-        f.write('\n'.join(report))
-
-
-# -------------------------- CLI 入口 ----------------------------- #
-
+# -------------------------- CLI Entry ----------------------------- #
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Sekai Recommendation System Orchestrator",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Run with default settings
-  python -m src.orchestrator
-  
-  # Run 5 cycles with 10 users per cycle
-  python -m src.orchestrator --cycles 5 --sample-users 10
-  
-  # Use keyword-based evaluation (faster, less accurate)
-  python -m src.orchestrator --no-llm-eval
-        """
-    )
+    import argparse
+    import pandas as pd
     
-    parser.add_argument(
-        "--cycles", 
-        type=int, 
-        default=3, 
-        help="Maximum number of optimization cycles (default: 3)"
-    )
-    parser.add_argument(
-        "--min-delta", 
-        type=float, 
-        default=0.01, 
-        help="Minimum improvement threshold for early stopping (default: 0.01)"
-    )
-    parser.add_argument(
-        "--sample-users", 
-        type=int, 
-        default=3, 
-        help="Number of users to sample per evaluation cycle (default: 3)"
-    )
-    parser.add_argument(
-        "--log-dir",
-        type=Path,
-        default=PROJECT_ROOT / "logs" / f"run_{int(time.time())}",
-        help="Directory for logs and results (default: logs/run_<timestamp>)"
-    )
-    parser.add_argument(
-        "--no-llm-eval",
-        action="store_true",
-        help="Use keyword-based evaluation instead of LLM (faster but less accurate)"
-    )
-    parser.add_argument(
-        "--seed",
-        type=int,
-        default=42,
-        help="Random seed for reproducibility (default: 42)"
-    )
-    parser.add_argument(
-        "--recall-mode",
-        type=str,
-        default="llm",
-        help="Recall mode for RecommendationAgent (default: llm)"
-    )
-    parser.add_argument(
-        "--rerank-window",
-        type=int,
-        default=30,
-        help="Rerank window for RecommendationAgent (default: 30)"
-    )
-    parser.add_argument(
-        "--eval-mode",
-        type=str,
-        default="llm",
-        help="Evaluation mode for EvaluationAgent (default: llm)"
-    )
-    parser.add_argument(
-        "--use-simple-rerank",
-        action="store_true",
-        help="Use simple rerank for RecommendationAgent"
-    )
-    parser.add_argument(
-        "--tag-weight",
-        type=float,
-        default=0.1,
-        help="Tag weight for RecommendationAgent (default: 0.1)"
-    )
-    parser.add_argument(
-        "--cold-start-boost",
-        type=float,
-        default=0.2,
-        help="Cold start boost for RecommendationAgent (default: 0.2)"
-    )
-
+    parser = argparse.ArgumentParser(description="Run recommendation system experiment")
+    parser.add_argument("--cycles", type=int, default=3, help="Number of optimization cycles")
+    parser.add_argument("--min-delta", type=float, default=0.01, help="Minimum improvement threshold")
+    parser.add_argument("--users", type=int, default=10, help="Number of users to sample")
+    parser.add_argument("--log-dir", type=str, default="logs/experiment", help="Log directory")
+    parser.add_argument("--dry-run", action="store_true", help="Dry run mode")
+    parser.add_argument("--recall-mode", choices=["llm", "vector"], default="llm", help="Recall mode")
+    parser.add_argument("--rerank-window", type=int, default=30, help="Rerank window size")
+    parser.add_argument("--eval-mode", choices=["llm", "keyword", "vector"], default="llm", help="Evaluation mode")
+    parser.add_argument("--use-simple-rerank", action="store_true", help="Use simple rerank template")
+    parser.add_argument("--tag-weight", type=float, default=0.1, help="Tag weight for fusion")
+    parser.add_argument("--cold-start-boost", type=float, default=0.2, help="Cold start boost factor")
+    
     args = parser.parse_args()
     
-    # 配置日志
-    logger.remove()  # 移除默认 handler
+    # Configure logging
+    logger.remove()  # Remove default handler
     logger.add(
-        sys.stdout, 
-        level="INFO",
-        format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{message}</cyan>"
+        sys.stderr,
+        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>"
     )
+    # Also log to file
+    log_dir = Path(args.log_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    logger.add(log_dir / "orchestrator.log", rotation="10 MB")
     
-    # 同时记录到文件
-    logger.add(
-        args.log_dir / "orchestrator.log",
-        level="DEBUG",
-        format="{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}"
-    )
+    # Set random seed
+    random.seed(42)
     
-    # 设置随机种子
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    
-    # 运行主流程
+    # Run main process
     main(
         cycles=args.cycles,
         min_delta=args.min_delta,
-        sample_users=args.sample_users,
-        log_dir=args.log_dir,
-        use_llm_evaluation=not args.no_llm_eval,
+        sample_users=args.users,
+        log_dir=log_dir,
+        dry_run=args.dry_run,
         recall_mode=args.recall_mode,
         rerank_window=args.rerank_window,
         eval_mode=args.eval_mode,

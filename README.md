@@ -1,11 +1,11 @@
-# Sekai Recommendation Agent
+# ❤️ Sekai Recommendation Agent
 
 > **AI-Native & Cutting-Edge Recommendation System for Role-Play Stories**
 
 A sophisticated recommendation system that leverages the latest LLMs and AI frameworks to provide personalized story recommendations for Sekai users. This project demonstrates deep content understanding, advanced prompt engineering, and robust evaluation methodologies.
 
 
-## Directory Structure
+## 📖 Directory Structure
 
 - `src/agents/` — Core agent implementations
 - `src/models/` — Model wrappers and utilities
@@ -16,7 +16,7 @@ A sophisticated recommendation system that leverages the latest LLMs and AI fram
 
 ---
 
-## Quick Results
+## 🍎 Quick Results
 
 | Cycle | P@10      | R@10      | Δ vs prev |
 | ----- | --------- | --------- | --------- |
@@ -59,7 +59,7 @@ Key dependencies:
 
 ---
 
-## Architecture & Agent Roles
+## 🏠 Architecture & Agent Roles
 
 ```
 ┌──────────┐
@@ -76,7 +76,7 @@ Key dependencies:
         ▼        ▼                          │
 ┌──────────────┐  ┌─────────────────┐       │
 │ Vector Store │  │ Multi‑View      │       │
-│  (Milvus)    │  │  Recall System  │       │
+│  (FAISS)     │  │  Recall System  │       │
 └─────┬────────┘  └────────┬────────┘       │
       │ candidates         │                │
       ▼                    ▼                │
@@ -104,7 +104,7 @@ Key dependencies:
 
 - **Client**: Sends user behavior and receives recommendations.
 - **A/B Router & Guard**: Handles traffic splitting, latency fallback, and cost control (with BudgetMonitor).
-- **Vector Store (Milvus)**: Stores content embeddings for fast candidate retrieval.
+- **Vector Store (FAISS)**: Stores content embeddings for fast candidate retrieval.
 - **Multi-View Recall System**: Combines tag, semantic, rule, and popularity signals to generate diverse candidates.
 - **Recommendation Agent (LLM)**: Reranks candidates using LLMs for high-quality recommendations.
 - **Policy Guard**: Applies safety and fairness filtering to the ranked list.
@@ -115,7 +115,7 @@ Key dependencies:
 
 ---
 
-## Caching Strategy
+## 🔋 Caching Strategy
 
 - **Embedding Cache**:
 
@@ -129,7 +129,7 @@ Key dependencies:
 
 ---
 
-## Evaluation Metric & Stopping Rule
+## 🌟 Evaluation Metric & Stopping Rule
 
 - **Metrics**:
 
@@ -140,6 +140,26 @@ Key dependencies:
   - The prompt optimizer monitors the improvement (`delta`) in metrics across cycles.
   - If the expected gain in precision/recall falls below a configurable threshold (`min_delta`) for multiple rounds, the optimizer triggers an "explore" strategy or halts further prompt updates.
   - This ensures efficient convergence and avoids overfitting to noise.
+
+---
+
+## ☁️ Production Scaling Strategy
+
+### Infrastructure Scaling
+- **Horizontal Scaling**: Deploy agents as stateless microservices on Kubernetes
+- **Vector Index**: Migrate from FAISS to Milvus/Qdrant for distributed vector search (currently using FAISS)
+- **Caching Layer**: Implement Redis cluster for distributed prompt/embedding cache
+- **Model Serving**: Use vLLM or TensorRT-LLM for optimized inference at scale
+
+### Performance Optimization
+- **Batch Processing**: Queue-based architecture for handling bulk recommendations
+- **Async Pipeline**: Non-blocking agent communication via message queues (e.g., Kafka)
+- **Load Balancing**: Implement request routing based on model availability and latency
+
+### Monitoring & Observability
+- **Metrics**: Prometheus + Grafana for real-time performance monitoring
+- **Logging**: Centralized logging with ELK stack
+- **Tracing**: Distributed tracing with OpenTelemetry
 
 ---
 
@@ -188,7 +208,7 @@ Our system uses a **cutting-edge, cost-effective model stack** with the latest A
 | **Error Handling**   | Each LLM call `max_retries=3` with exponential backoff; multiple failures throw `ModelError` and log. |
 | **Cost Monitoring**  | `budget_monitor` aggregates tokens & \$ per cycle, output at log end.                                 |
 | **Cross-Validation** | Supports `llm`, `keyword`, `vector` 3 evaluation modes for real click alignment. 
-                     |
+                     
 ---
 
 ## 📈 Evaluation & Analysis
@@ -212,7 +232,8 @@ See [`prompt_strategy_templates.md`](./prompt_strategy_templates.md) for referen
 
 ## 📄 License
 
-MIT License - see LICENSE file for details.
+
+This is a technical assessment project. For production use, please contact the Sekai team.
 
 ---
 

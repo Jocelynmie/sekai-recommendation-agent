@@ -1,13 +1,26 @@
+"""
+Main Entry Point
+Entry point for the recommendation system
+"""
+
 import argparse
 import os
+import sys
 from dotenv import load_dotenv
-from src.orchestrator import main as orchestrator_main
 from pathlib import Path
 
-# 确保在导入其他模块前加载环境变量
+# Ensure environment variables are loaded before importing other modules
 load_dotenv(dotenv_path=".env", override=True)
 
+# Add project root to Python path
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+from loguru import logger
+from src.orchestrator import main as orchestrator_main
+
 def main():
+    """Main entry point"""
     parser = argparse.ArgumentParser(description="Sekai Recommendation System")
     parser.add_argument("--cycles", type=int, default=1, help="Number of optimization cycles")
     parser.add_argument("--sample-users", type=int, default=5, help="Number of users to sample")
@@ -25,14 +38,13 @@ def main():
     args = parser.parse_args()
     print(f"[main.py] args: {args}")
     
-    # 调试环境变量
-    api_key = os.getenv("OPENAI_API_KEY")
-    if api_key:
-        print(f"[main.py] OPENAI_API_KEY found: {api_key[:10]}...")
-    else:
-        print("[main.py] WARNING: OPENAI_API_KEY not found!")
+    # Debug environment variables
+    logger.info("Environment check:")
+    logger.info(f"  OPENAI_API_KEY: {'Set' if os.getenv('OPENAI_API_KEY') else 'Not set'}")
+    logger.info(f"  GOOGLE_API_KEY: {'Set' if os.getenv('GOOGLE_API_KEY') else 'Not set'}")
+    logger.info(f"  ANTHROPIC_API_KEY: {'Set' if os.getenv('ANTHROPIC_API_KEY') else 'Not set'}")
     
-    # 设置随机种子
+    # Set random seed
     if args.seed is not None:
         import random
         import numpy as np

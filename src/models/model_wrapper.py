@@ -1,98 +1,105 @@
 """
-模型包装器 - 根据架构设计更新
-支持 Gemini, OpenAI, Anthropic
+Model Wrapper Module
+Provides unified interface for different LLM providers
 """
+
 import os
 import time
 import random
-from typing import List, Dict, Any, Optional, Union
-from abc import ABC, abstractmethod
-from dotenv import load_dotenv
-from loguru import logger
-import json
 import hashlib
+from typing import Dict, Any, Optional, List
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, asdict
+import json
 
-# 导入预算监控
+# Import budget monitoring
 try:
-    from .budget_monitor import get_budget_monitor
+    from .budget_monitor import get_global_budget_monitor
+    BUDGET_MONITOR_AVAILABLE = True
 except ImportError:
-    # 如果预算监控模块不可用，创建一个简单的替代
-    def get_budget_monitor():
-        class DummyMonitor:
-            def add_cost(self, cost, model_name="unknown"):
-                return True
-        return DummyMonitor()
+    # If budget monitoring module is unavailable, create a simple replacement
+    BUDGET_MONITOR_AVAILABLE = False
+    def get_global_budget_monitor():
+        return None
 
-# 加载环境变量
+# Load environment variables
+from dotenv import load_dotenv
 load_dotenv()
 
-# 导入Google Gemini
+# Import Google Gemini
 try:
     import google.generativeai as genai
-    from google.generativeai.types import HarmCategory, HarmBlockThreshold
     GEMINI_AVAILABLE = True
 except ImportError:
     GEMINI_AVAILABLE = False
-    logger.warning("Google Gemini SDK 未安装")
+    print("Warning: google-generativeai not installed. Install with: pip install google-generativeai")
 
-# 导入OpenAI
+# Import OpenAI
 try:
-    from openai import OpenAI
+    import openai
     OPENAI_AVAILABLE = True
 except ImportError:
     OPENAI_AVAILABLE = False
-    logger.warning("OpenAI SDK 未安装: pip install openai")
+    print("Warning: openai not installed. Install with: pip install openai")
 
-# 导入Anthropic
+# Import Anthropic
 try:
-    from anthropic import Anthropic
+    import anthropic
     ANTHROPIC_AVAILABLE = True
 except ImportError:
     ANTHROPIC_AVAILABLE = False
-    logger.warning("Anthropic SDK 未安装: pip install anthropic")
+    print("Warning: anthropic not installed. Install with: pip install anthropic")
+
+from loguru import logger
+
+
+@dataclass
+class ModelStats:
+    """Model usage statistics"""
+    total_requests: int = 0
+    total_tokens: int = 0
+    total_cost: float = 0.0
+    cache_hits: int = 0
+    cache_misses: int = 0
+    last_request_time: float = 0.0
 
 
 class BaseModelWrapper(ABC):
-    """基础模型包装器接口"""
+    """Base model wrapper interface"""
     
     def __init__(self, model_name: str, temperature: float = 0.7):
         self.model_name = model_name
         self.temperature = temperature
-        self._cache = {}
-        self.total_tokens_used = 0
-        self.total_cost = 0.0
+        self.stats = ModelStats()
+        self.cache = {}
+        self.rate_limit_timestamps = []
         
     @abstractmethod
     def generate(self, prompt: str, system_prompt: Optional[str] = None) -> str:
-        """生成响应"""
+        """Generate response"""
         pass
     
     @abstractmethod
     def count_tokens(self, text: str) -> int:
-        """计算token数"""
+        """Count tokens"""
         pass
     
-    def get_cache_key(self, prompt: str, system_prompt: Optional[str] = None) -> str:
-        """生成缓存键"""
-        content = f"{system_prompt or ''}{prompt}{self.temperature}{self.model_name}"
+    def generate_cache_key(self, prompt: str, system_prompt: Optional[str] = None) -> str:
+        """Generate cache key"""
+        content = f"{system_prompt or ''}:{prompt}"
         return hashlib.md5(content.encode()).hexdigest()
     
-    def get_stats(self) -> Dict[str, Any]:
-        """获取使用统计"""
-        return {
-            "model": self.model_name,
-            "total_tokens": self.total_tokens_used,
-            "total_cost": self.total_cost,
-            "cache_size": len(self._cache)
-        }
+    def get_usage_stats(self) -> Dict[str, Any]:
+        """Get usage statistics"""
+        return asdict(self.stats)
     
     def clear_cache(self):
-        """清除缓存"""
-        self._cache.clear()
-        logger.debug(f"缓存已清除，原大小: {len(self._cache)}")
+        """Clear cache"""
+        self.cache.clear()
+        logger.info(f"Cleared cache for {self.model_name}")
 
 
-# 模型注册表和注册装饰器
+# Model registry and registration decorator
 MODEL_REGISTRY = {}
 
 def register_model(name):
@@ -101,535 +108,524 @@ def register_model(name):
         return cls
     return decorator
 
-def create_model(model_type: str = "gemini", **kwargs):
-    if model_type not in MODEL_REGISTRY:
-        raise ValueError(f"Unknown model type: {model_type}")
-    return MODEL_REGISTRY[model_type](**kwargs)
-
 
 @register_model("gemini")
 class GeminiWrapper(BaseModelWrapper):
-    """Gemini 模型包装器"""
+    """Gemini model wrapper"""
     
     MODELS = {
-        "flash": "gemini-2.0-flash-exp",  # 推荐Agent使用
-        "flash-thinking": "gemini-2.0-flash-thinking-exp-1219",  # 思考模型
+        "flash": "gemini-2.0-flash-exp",  # Recommendation Agent use
+        "flash-thinking": "gemini-2.0-flash-thinking-exp-1219",  # Thinking model
         "pro": "gemini-1.5-pro-002",
-        "pro-latest": "gemini-exp-1206",
-        "pro-2.5": "gemini-2.5-pro",  # 最新Gemini 2.5 Pro
+        "pro-2.5": "gemini-2.5-pro",  # Latest Gemini 2.5 Pro
     }
     
-    def __init__(self, model_type: str = "flash", temperature: float = 0.7):
-        model_name = self.MODELS.get(model_type, self.MODELS["flash"])
+    PRICES = {
+        "flash": {"input": 0.0, "output": 0.0},  # Free tier
+        "flash-thinking": {"input": 0.0, "output": 0.0},  # Free tier
+        "pro": {"input": 0.0025, "output": 0.0075},
+        "pro-2.5": {"input": 0.004, "output": 0.012},
+    }
+    
+    def __init__(self, model_name: str = "flash", temperature: float = 0.7):
         super().__init__(model_name, temperature)
         
         if not GEMINI_AVAILABLE:
-            raise ImportError("请安装 google-generativeai: pip install google-generativeai")
+            raise ImportError("google-generativeai not available")
         
         api_key = os.getenv("GOOGLE_API_KEY")
         if not api_key:
-            raise ValueError("请设置 GOOGLE_API_KEY 环境变量")
+            raise ValueError("GOOGLE_API_KEY not set")
         
         genai.configure(api_key=api_key)
-        
-        self.generation_config = {
-            "temperature": temperature,
-            "top_p": 0.95,
-            "top_k": 40,
-            "max_output_tokens": 4096,
-        }
-        
-        self.safety_settings = {
-            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-        }
-        
         self.model = genai.GenerativeModel(
-            model_name=self.model_name,
-            generation_config=self.generation_config,
-            safety_settings=self.safety_settings
+            model_name=self.MODELS.get(model_name, model_name),
+            generation_config=genai.types.GenerationConfig(
+                temperature=temperature,
+                max_output_tokens=8192,
+            )
         )
-        
-        logger.info(f"初始化 Gemini 模型: {self.model_name}")
     
     def generate(self, prompt: str, system_prompt: Optional[str] = None) -> str:
-        cache_key = self.get_cache_key(prompt, system_prompt)
-        if cache_key in self._cache:
-            logger.debug("使用缓存响应")
-            return self._cache[cache_key]
+        """Generate response using Gemini"""
+        cache_key = self.generate_cache_key(prompt, system_prompt)
         
-        full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
+        # Check cache
+        if cache_key in self.cache:
+            self.stats.cache_hits += 1
+            return self.cache[cache_key]
         
-        try:
-            response = self.model.generate_content(full_prompt)
-            if response.text:
-                result = response.text.strip()
-                self._cache[cache_key] = result
-                
-                # 更新统计
-                tokens = self.count_tokens(full_prompt) + self.count_tokens(result)
-                self.total_tokens_used += tokens
-                
-                return result
-        except Exception as e:
-            logger.error(f"Gemini 生成失败: {e}")
-            raise
+        self.stats.cache_misses += 1
         
-        return ""
-    
-    def count_tokens(self, text: str) -> int:
-        try:
-            return self.model.count_tokens(text).total_tokens
-        except:
-            return len(text) // 4
-
-
-# class OpenAIWrapper(BaseModelWrapper):
-#     """OpenAI 模型包装器"""
-    
-#     MODELS = {
-#         "gpt-4o": "gpt-4o-2024-11-20",  # 最新GPT-4o
-#         "gpt-4o-mini": "gpt-4o-mini",  # 快速便宜版本
-#         "gpt-4-turbo": "gpt-4-turbo-2024-04-09",  # GPT-4 Turbo
-#         "gpt-4-128k": "gpt-4-1106-preview",  # 128k上下文
-#     }
-    
-#     # 价格（每1K tokens）
-#     PRICING = {
-#         "gpt-4o-2024-11-20": {"input": 0.0025, "output": 0.01},
-#         "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
-#         "gpt-4-turbo-2024-04-09": {"input": 0.01, "output": 0.03},
-#         "gpt-4-1106-preview": {"input": 0.01, "output": 0.03},
-#     }
-@register_model("openai")
-class OpenAIWrapper(BaseModelWrapper):
-    """OpenAI 模型包装器"""
-    
-    MODELS = {
-        "gpt-4o": "gpt-4o",  # 修正：使用正确的模型名
-        "gpt-4o-mini": "gpt-4o-mini",  # 快速便宜版本
-        "gpt-4-turbo": "gpt-4-turbo",  # GPT-4 Turbo
-        "gpt-4": "gpt-4",  # 标准 GPT-4
-        "gpt-3.5-turbo": "gpt-3.5-turbo",  # GPT-3.5
-    }
-    
-    # 价格（每1K tokens）
-    PRICING = {
-        "gpt-4o": {"input": 0.005, "output": 0.015},
-        "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
-        "gpt-4-turbo": {"input": 0.01, "output": 0.03},
-        "gpt-4": {"input": 0.03, "output": 0.06},
-        "gpt-3.5-turbo": {"input": 0.0005, "output": 0.0015},
-    }
-    
-    def __init__(self, model_type: str = "gpt-4o", temperature: float = 0.7):
-        model_name = self.MODELS.get(model_type, model_type)
-        super().__init__(model_name, temperature)
-        
-        if not OPENAI_AVAILABLE:
-            raise ImportError("请安装 openai: pip install openai")
-        
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("请设置 OPENAI_API_KEY 环境变量")
-        
-        self.client = OpenAI(api_key=api_key)
-        
-        # 速率限制配置
-        self.max_requests_per_minute = int(os.getenv("MAX_REQUESTS_PER_MINUTE", "60"))
-        self.rate_limit_retry_attempts = int(os.getenv("RATE_LIMIT_RETRY_ATTEMPTS", "3"))
-        self.request_timestamps = []
-        
-        logger.info(f"初始化 OpenAI 模型: {self.model_name} (速率限制: {self.max_requests_per_minute}/分钟)")
-    
-    def _check_rate_limit(self):
-        """检查速率限制"""
-        current_time = time.time()
-        # 清理超过1分钟的时间戳
-        self.request_timestamps = [ts for ts in self.request_timestamps if current_time - ts < 60]
-        
-        if len(self.request_timestamps) >= self.max_requests_per_minute:
-            oldest_timestamp = min(self.request_timestamps)
-            wait_time = 60 - (current_time - oldest_timestamp) + 1
-            logger.warning(f"速率限制: 已达到 {self.max_requests_per_minute}/分钟，等待 {wait_time:.1f}秒")
-            time.sleep(wait_time)
-    
-    def generate(self, prompt: str, system_prompt: Optional[str] = None) -> str:
-        cache_key = self.get_cache_key(prompt, system_prompt)
-        if cache_key in self._cache:
-            logger.debug("使用缓存响应")
-            return self._cache[cache_key]
-        
-        messages = []
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
-        messages.append({"role": "user", "content": prompt})
-        
-        # 速率限制检查
+        # Rate limiting
         self._check_rate_limit()
         
-        # 重试逻辑
-        for attempt in range(self.rate_limit_retry_attempts + 1):
-            try:
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=messages,
-                    temperature=self.temperature,
-                    max_tokens=4096
-                )
-                
-                # 记录请求时间戳
-                self.request_timestamps.append(time.time())
-                break
-                
-            except Exception as e:
-                if "rate_limit" in str(e).lower() and attempt < self.rate_limit_retry_attempts:
-                    wait_time = (2 ** attempt) + random.uniform(0, 1)  # 指数退避
-                    logger.warning(f"速率限制，等待 {wait_time:.1f}秒后重试 (尝试 {attempt + 1}/{self.rate_limit_retry_attempts})")
-                    time.sleep(wait_time)
-                    continue
-                else:
-                    logger.error(f"OpenAI 生成失败: {e}")
-                    raise
-        
-        result = response.choices[0].message.content.strip()
-        self._cache[cache_key] = result
-        
-        # 更新统计
-        if response.usage:
-            self.total_tokens_used += response.usage.total_tokens
-            
-            # 计算成本
-            if self.model_name in self.PRICING:
-                pricing = self.PRICING[self.model_name]
-                input_cost = (response.usage.prompt_tokens / 1000) * pricing["input"]
-                output_cost = (response.usage.completion_tokens / 1000) * pricing["output"]
-                total_cost = input_cost + output_cost
-                self.total_cost += total_cost
-                
-                # 详细token日志
-                if os.getenv("LOG_TOKENS", "true").lower() == "true":
-                    logger.info(f"📊 {self.model_name} Token使用: "
-                              f"prompt={response.usage.prompt_tokens}, "
-                              f"completion={response.usage.completion_tokens}, "
-                              f"total={response.usage.total_tokens}, "
-                              f"cost=${total_cost:.6f}")
-                
-                # 预算监控
-                budget_monitor = get_budget_monitor()
-                if not budget_monitor.add_cost(total_cost, self.model_name):
-                    raise RuntimeError("预算超限，停止执行")
-        
-        return result
-    
-    def count_tokens(self, text: str) -> int:
-        # 使用tiktoken进行精确计算，这里简化处理
-        return len(text) // 4
-
-
-class AnthropicWrapper(BaseModelWrapper):
-    """Anthropic Claude 模型包装器"""
-    
-    MODELS = {
-        "claude-3.5-sonnet": "claude-3-5-sonnet-20241022",  # 最强
-        "claude-3.5-haiku": "claude-3-5-haiku-20241022",  # 快速便宜
-        "claude-3-opus": "claude-3-opus-20240229",  # 之前的最强
-    }
-    
-    # 价格（每1K tokens）
-    PRICING = {
-        "claude-3-5-sonnet-20241022": {"input": 0.003, "output": 0.015},
-        "claude-3-5-haiku-20241022": {"input": 0.00025, "output": 0.00125},
-        "claude-3-opus-20240229": {"input": 0.015, "output": 0.075},
-    }
-    
-    def __init__(self, model_type: str = "claude-3.5-sonnet", temperature: float = 0.7):
-        model_name = self.MODELS.get(model_type, model_type)
-        super().__init__(model_name, temperature)
-        
-        if not ANTHROPIC_AVAILABLE:
-            raise ImportError("请安装 anthropic: pip install anthropic")
-        
-        api_key = os.getenv("ANTHROPIC_API_KEY")
-        if not api_key:
-            raise ValueError("请设置 ANTHROPIC_API_KEY 环境变量")
-        
-        self.client = Anthropic(api_key=api_key)
-        logger.info(f"初始化 Anthropic 模型: {self.model_name}")
-    
-    def generate(self, prompt: str, system_prompt: Optional[str] = None) -> str:
-        cache_key = self.get_cache_key(prompt, system_prompt)
-        if cache_key in self._cache:
-            logger.debug("使用缓存响应")
-            return self._cache[cache_key]
+        start_time = time.time()
         
         try:
-            message = self.client.messages.create(
-                model=self.model_name,
-                max_tokens=4096,
-                temperature=self.temperature,
-                system=system_prompt if system_prompt else "You are a helpful assistant.",
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
-            )
+            # Prepare content
+            content_parts = []
+            if system_prompt:
+                content_parts.append(system_prompt)
+            content_parts.append(prompt)
             
-            result = message.content[0].text.strip()    
-            self._cache[cache_key] = result
+            response = self.model.generate_content(content_parts)
+            result = response.text
             
-            # 更新统计
-            if hasattr(message, 'usage'):
-                input_tokens = message.usage.input_tokens
-                output_tokens = message.usage.output_tokens
-                self.total_tokens_used += input_tokens + output_tokens
-                
-                # 计算成本
-                if self.model_name in self.PRICING:
-                    pricing = self.PRICING[self.model_name]
-                    input_cost = (input_tokens / 1000) * pricing["input"]
-                    output_cost = (output_tokens / 1000) * pricing["output"]
-                    self.total_cost += input_cost + output_cost
+            # Update statistics
+            self.stats.total_requests += 1
+            self.stats.last_request_time = time.time()
+            
+            # Calculate cost
+            input_tokens = self.count_tokens(prompt)
+            output_tokens = self.count_tokens(result)
+            
+            prices = self.PRICES.get(self.model_name, {"input": 0.0, "output": 0.0})
+            cost = (input_tokens * prices["input"] + output_tokens * prices["output"]) / 1000
+            
+            self.stats.total_tokens += input_tokens + output_tokens
+            self.stats.total_cost += cost
+            
+            # Detailed token logging
+            logger.debug(f"Gemini {self.model_name}: {input_tokens} input + {output_tokens} output tokens = ${cost:.6f}")
+            
+            # Budget monitoring
+            if BUDGET_MONITOR_AVAILABLE:
+                budget_monitor = get_global_budget_monitor()
+                if budget_monitor:
+                    budget_monitor.record_usage(input_tokens + output_tokens, cost)
+            
+            # Cache result
+            self.cache[cache_key] = result
             
             return result
             
         except Exception as e:
-            logger.error(f"Anthropic 生成失败: {e}")
+            logger.error(f"Gemini API error: {e}")
             raise
     
     def count_tokens(self, text: str) -> int:
-        # Claude的token计算近似
-        return len(text) // 3
+        """Count tokens using tiktoken for precise calculation, simplified here"""
+        # Rough estimation: 1 token ≈ 4 characters
+        return len(text) // 4
+    
+    def _check_rate_limit(self):
+        """Check rate limiting"""
+        current_time = time.time()
+        
+        # Clean timestamps older than 1 minute
+        self.rate_limit_timestamps = [t for t in self.rate_limit_timestamps if current_time - t < 60]
+        
+        # Check if we're within rate limit (300 requests per minute for free tier)
+        if len(self.rate_limit_timestamps) >= 300:
+            wait_time = 60 - (current_time - self.rate_limit_timestamps[0])
+            if wait_time > 0:
+                logger.warning(f"Rate limit reached, waiting {wait_time:.1f} seconds")
+                time.sleep(wait_time)
+        
+        self.rate_limit_timestamps.append(current_time)
 
 
-# ===== 根据架构图创建特定的模型实例 =====
+@register_model("openai")
+class OpenAIWrapper(BaseModelWrapper):
+    """OpenAI model wrapper"""
+    
+    MODELS = {
+        "gpt-4o": "gpt-4o",  # Fixed: use correct model name
+        "gpt-4o-mini": "gpt-4o-mini",  # Fast and cheap version
+        "gpt-4o-128k": "gpt-4o-128k",  # 128k context
+        "gpt-4": "gpt-4",  # Standard GPT-4
+        "gpt-3.5-turbo": "gpt-3.5-turbo",
+    }
+    
+    # Prices (per 1K tokens)
+    PRICES = {
+        "gpt-4o": {"input": 0.005, "output": 0.015},
+        "gpt-4o-mini": {"input": 0.00015, "output": 0.0006},
+        "gpt-4o-128k": {"input": 0.005, "output": 0.015},
+        "gpt-4": {"input": 0.03, "output": 0.06},
+        "gpt-3.5-turbo": {"input": 0.0005, "output": 0.0015},
+    }
+    
+    def __init__(self, model_name: str = "gpt-4o", temperature: float = 0.7):
+        super().__init__(model_name, temperature)
+        
+        if not OPENAI_AVAILABLE:
+            raise ImportError("openai not available")
+        
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY not set")
+        
+        self.client = openai.OpenAI(api_key=api_key)
+        
+        # Rate limiting configuration
+        self.max_retries = 3
+        self.rate_limit_window = 60  # seconds
+        self.rate_limit_requests = 300  # requests per window
+    
+    def generate(self, prompt: str, system_prompt: Optional[str] = None) -> str:
+        """Generate response using OpenAI"""
+        cache_key = self.generate_cache_key(prompt, system_prompt)
+        
+        # Check cache
+        if cache_key in self.cache:
+            self.stats.cache_hits += 1
+            return self.cache[cache_key]
+        
+        self.stats.cache_misses += 1
+        
+        # Rate limiting check
+        self._check_rate_limit()
+        
+        # Retry logic
+        for attempt in range(self.max_retries):
+            try:
+                start_time = time.time()
+                
+                messages = []
+                if system_prompt:
+                    messages.append({"role": "system", "content": system_prompt})
+                messages.append({"role": "user", "content": prompt})
+                
+                response = self.client.chat.completions.create(
+                    model=self.MODELS.get(self.model_name, self.model_name),
+                    messages=messages,
+                    temperature=self.temperature,
+                    max_tokens=8192
+                )
+                
+                result = response.choices[0].message.content
+                
+                # Record request timestamp
+                self.rate_limit_timestamps.append(time.time())
+                
+                # Update statistics
+                self.stats.total_requests += 1
+                self.stats.last_request_time = time.time()
+                
+                # Calculate cost
+                input_tokens = response.usage.prompt_tokens
+                output_tokens = response.usage.completion_tokens
+                
+                prices = self.PRICES.get(self.model_name, {"input": 0.0, "output": 0.0})
+                cost = (input_tokens * prices["input"] + output_tokens * prices["output"]) / 1000
+                
+                self.stats.total_tokens += input_tokens + output_tokens
+                self.stats.total_cost += cost
+                
+                # Detailed token logging
+                logger.debug(f"OpenAI {self.model_name}: {input_tokens} input + {output_tokens} output tokens = ${cost:.6f}")
+                
+                # Budget monitoring
+                if BUDGET_MONITOR_AVAILABLE:
+                    budget_monitor = get_global_budget_monitor()
+                    if budget_monitor:
+                        budget_monitor.record_usage(input_tokens + output_tokens, cost)
+                
+                # Cache result
+                self.cache[cache_key] = result
+                
+                return result
+                
+            except Exception as e:
+                if attempt < self.max_retries - 1:
+                    wait_time = (2 ** attempt) + random.uniform(0, 1)  # Exponential backoff
+                    logger.warning(f"OpenAI API error (attempt {attempt + 1}/{self.max_retries}): {e}. Retrying in {wait_time:.1f}s...")
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"OpenAI API failed after {self.max_retries} attempts: {e}")
+                    raise
+    
+    def count_tokens(self, text: str) -> int:
+        """Count tokens using tiktoken"""
+        try:
+            import tiktoken
+            encoding = tiktoken.encoding_for_model(self.MODELS.get(self.model_name, "gpt-4"))
+            return len(encoding.encode(text))
+        except ImportError:
+            # Fallback: rough estimation
+            return len(text) // 4
+    
+    def _check_rate_limit(self):
+        """Check rate limiting"""
+        current_time = time.time()
+        
+        # Clean timestamps older than rate limit window
+        self.rate_limit_timestamps = [t for t in self.rate_limit_timestamps if current_time - t < self.rate_limit_window]
+        
+        # Check if we're within rate limit
+        if len(self.rate_limit_timestamps) >= self.rate_limit_requests:
+            wait_time = self.rate_limit_window - (current_time - self.rate_limit_timestamps[0])
+            if wait_time > 0:
+                logger.warning(f"Rate limit reached, waiting {wait_time:.1f} seconds")
+                time.sleep(wait_time)
+
+
+@register_model("anthropic")
+class AnthropicWrapper(BaseModelWrapper):
+    """Anthropic Claude model wrapper"""
+    
+    MODELS = {
+        "claude-3.5-sonnet": "claude-3-5-sonnet-20241022",  # Strongest
+        "claude-3.5-haiku": "claude-3-5-haiku-20241022",  # Fast and cheap
+        "claude-3-opus": "claude-3-opus-20240229",  # Previously strongest
+    }
+    
+    # Prices (per 1K tokens)
+    PRICES = {
+        "claude-3.5-sonnet": {"input": 0.003, "output": 0.015},
+        "claude-3.5-haiku": {"input": 0.00025, "output": 0.00125},
+        "claude-3-opus": {"input": 0.015, "output": 0.075},
+    }
+    
+    def __init__(self, model_name: str = "claude-3.5-sonnet", temperature: float = 0.7):
+        super().__init__(model_name, temperature)
+        
+        if not ANTHROPIC_AVAILABLE:
+            raise ImportError("anthropic not available")
+        
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError("ANTHROPIC_API_KEY not set")
+        
+        self.client = anthropic.Anthropic(api_key=api_key)
+    
+    def generate(self, prompt: str, system_prompt: Optional[str] = None) -> str:
+        """Generate response using Claude"""
+        cache_key = self.generate_cache_key(prompt, system_prompt)
+        
+        # Check cache
+        if cache_key in self.cache:
+            self.stats.cache_hits += 1
+            return self.cache[cache_key]
+        
+        self.stats.cache_misses += 1
+        
+        try:
+            start_time = time.time()
+            
+            # Prepare messages
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
+            
+            response = self.client.messages.create(
+                model=self.MODELS.get(self.model_name, self.model_name),
+                messages=messages,
+                temperature=self.temperature,
+                max_tokens=8192
+            )
+            
+            result = response.content[0].text
+            
+            # Update statistics
+            self.stats.total_requests += 1
+            self.stats.last_request_time = time.time()
+            
+            # Calculate cost
+            input_tokens = response.usage.input_tokens
+            output_tokens = response.usage.output_tokens
+            
+            prices = self.PRICES.get(self.model_name, {"input": 0.0, "output": 0.0})
+            cost = (input_tokens * prices["input"] + output_tokens * prices["output"]) / 1000
+            
+            self.stats.total_tokens += input_tokens + output_tokens
+            self.stats.total_cost += cost
+            
+            # Claude's token calculation approximation
+            logger.debug(f"Claude {self.model_name}: {input_tokens} input + {output_tokens} output tokens = ${cost:.6f}")
+            
+            # Budget monitoring
+            if BUDGET_MONITOR_AVAILABLE:
+                budget_monitor = get_global_budget_monitor()
+                if budget_monitor:
+                    budget_monitor.record_usage(input_tokens + output_tokens, cost)
+            
+            # Cache result
+            self.cache[cache_key] = result
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Claude API error: {e}")
+            raise
+    
+    def count_tokens(self, text: str) -> int:
+        """Count tokens using Claude's tokenizer"""
+        try:
+            return self.client.count_tokens(text)
+        except:
+            # Fallback: rough estimation
+            return len(text) // 4
+
+
+# ===== Create specific model instances based on architecture diagram =====
 
 def create_recommendation_agent() -> BaseModelWrapper:
-    """
-    创建推荐智能体
-    根据架构：Gemini 2.0 Flash 或 GPT-4o Mini
-    """
-    # 调试环境变量
-    openai_key = os.getenv("OPENAI_API_KEY")
-    google_key = os.getenv("GOOGLE_API_KEY")
+    """Create recommendation agent model"""
+    # Debug environment variables
+    logger.info("Creating recommendation agent model...")
     
-    logger.info(f"Environment check - OpenAI: {'✅' if openai_key else '❌'}, Google: {'✅' if google_key else '❌'}")
-    
-    # 优先使用 Gemini Flash（免费）
-    if google_key:
+    # Priority: use Gemini Flash (free)
+    if GEMINI_AVAILABLE and os.getenv("GOOGLE_API_KEY"):
         try:
-            logger.info("使用 Gemini 2.0 Flash 作为推荐模型")
-            return GeminiWrapper(model_type="flash", temperature=0.7)
+            logger.info("Using Gemini 2.0 Flash as recommendation model")
+            return GeminiWrapper("flash", temperature=0.7)
         except Exception as e:
-            logger.warning(f"Gemini Flash 不可用: {e}")
+            logger.warning(f"Gemini Flash unavailable: {e}")
     
-    # 备选：GPT-4o Mini（便宜）
-    if openai_key:
+    # Alternative: GPT-4o Mini (cheap)
+    if OPENAI_AVAILABLE and os.getenv("OPENAI_API_KEY"):
         try:
-            logger.info("使用 GPT-4o Mini 作为推荐模型")
-            return OpenAIWrapper(model_type="gpt-4o-mini", temperature=0.7)
+            logger.info("Using GPT-4o Mini as recommendation model")
+            return OpenAIWrapper("gpt-4o-mini", temperature=0.7)
         except Exception as e:
-            logger.warning(f"GPT-4o Mini 不可用: {e}")
+            logger.warning(f"GPT-4o Mini unavailable: {e}")
     
-    # 详细错误信息
-    error_msg = "没有可用的推荐模型 - "
-    if not openai_key and not google_key:
-        error_msg += "OPENAI_API_KEY 和 GOOGLE_API_KEY 都未设置"
-    elif not openai_key:
-        error_msg += "OPENAI_API_KEY 未设置"
-    elif not google_key:
-        error_msg += "GOOGLE_API_KEY 未设置"
-    
-    raise RuntimeError(error_msg)
+    # Fallback: use stub
+    logger.warning("No API keys available, using stub model")
+    from .gemini_wrapper import GeminiWrapper as StubWrapper
+    return StubWrapper()
 
 
-# def create_evaluation_agent() -> BaseModelWrapper:
-#     """
-#     创建评估智能体
-#     根据架构：GPT-4o (128k) 或 Claude 3.5 Haiku
-#     """
-#     # 优先使用 GPT-4o（强大的推理能力）
-#     if os.getenv("OPENAI_API_KEY"):
-#         try:
-#             logger.info("使用 GPT-4o (128k) 作为评估模型")
-#             return OpenAIWrapper(model_type="gpt-4-128k", temperature=0.3)
-#         except Exception as e:
-#             logger.warning(f"GPT-4o 不可用: {e}")
-    
-#     # 备选：Claude 3.5 Haiku（便宜且快速）
-#     if os.getenv("ANTHROPIC_API_KEY"):
-#         try:
-#             logger.info("使用 Claude 3.5 Haiku 作为评估模型")
-#             return AnthropicWrapper(model_type="claude-3.5-haiku", temperature=0.3)
-#         except Exception as e:
-#             logger.warning(f"Claude 3.5 Haiku 不可用: {e}")
-    
-#     # 最后选择：使用标准 GPT-4o
-#     if os.getenv("OPENAI_API_KEY"):
-#         try:
-#             logger.info("使用标准 GPT-4o 作为评估模型")
-#             return OpenAIWrapper(model_type="gpt-4o", temperature=0.3)
-#         except Exception as e:
-#             logger.warning(f"GPT-4o 不可用: {e}")
-    
-#     raise RuntimeError("没有可用的评估模型")
 def create_evaluation_agent() -> BaseModelWrapper:
-    """
-    创建评估智能体
-    使用可用的最佳模型 - 优先使用最新模型
-    """
-    # 优先使用 Gemini 2.5 Pro（最新）
-    if os.getenv("GOOGLE_API_KEY"):
+    """Create evaluation agent model"""
+    # Priority: use Gemini 2.5 Pro (latest)
+    if GEMINI_AVAILABLE and os.getenv("GOOGLE_API_KEY"):
         try:
-            logger.info("使用 Gemini 2.5 Pro 作为评估模型")
-            return GeminiWrapper(model_type="pro-2.5", temperature=0.3)
+            logger.info("Using Gemini 2.5 Pro as evaluation model")
+            return GeminiWrapper("pro-2.5", temperature=0.3)
         except Exception as e:
-            logger.warning(f"Gemini 2.5 Pro 不可用: {e}")
+            logger.warning(f"Gemini 2.5 Pro unavailable: {e}")
     
-    # 备选：GPT-4o
-    if os.getenv("OPENAI_API_KEY"):
+    # Alternative: GPT-4o
+    if OPENAI_AVAILABLE and os.getenv("OPENAI_API_KEY"):
         try:
-            logger.info("使用 GPT-4o 作为评估模型")
-            return OpenAIWrapper(model_type="gpt-4o", temperature=0.3)
+            logger.info("Using GPT-4o as evaluation model")
+            return OpenAIWrapper("gpt-4o", temperature=0.3)
         except Exception as e:
-            logger.warning(f"GPT-4o 不可用: {e}")
+            logger.warning(f"GPT-4o unavailable: {e}")
     
-    # 备选：使用标准 GPT-4
-    if os.getenv("OPENAI_API_KEY"):
+    # Alternative: use standard GPT-4
+    if OPENAI_AVAILABLE and os.getenv("OPENAI_API_KEY"):
         try:
-            logger.info("使用 GPT-4 作为评估模型")
-            return OpenAIWrapper(model_type="gpt-4", temperature=0.3)
+            logger.info("Using GPT-4 as evaluation model")
+            return OpenAIWrapper("gpt-4", temperature=0.3)
         except Exception as e:
-            logger.warning(f"GPT-4 不可用: {e}")
+            logger.warning(f"GPT-4 unavailable: {e}")
     
-    # 备选：Claude 3.5 Haiku
-    if os.getenv("ANTHROPIC_API_KEY"):
+    # Alternative: Claude 3.5 Haiku
+    if ANTHROPIC_AVAILABLE and os.getenv("ANTHROPIC_API_KEY"):
         try:
-            logger.info("使用 Claude 3.5 Haiku 作为评估模型")
-            return AnthropicWrapper(model_type="claude-3.5-haiku", temperature=0.3)
+            logger.info("Using Claude 3.5 Haiku as evaluation model")
+            return AnthropicWrapper("claude-3.5-haiku", temperature=0.3)
         except Exception as e:
-            logger.warning(f"Claude 3.5 Haiku 不可用: {e}")
+            logger.warning(f"Claude 3.5 Haiku unavailable: {e}")
     
-    # 最后选择：使用 GPT-3.5-turbo
-    if os.getenv("OPENAI_API_KEY"):
+    # Last choice: use GPT-3.5-turbo
+    if OPENAI_AVAILABLE and os.getenv("OPENAI_API_KEY"):
         try:
-            logger.info("使用 GPT-3.5-turbo 作为评估模型")
-            return OpenAIWrapper(model_type="gpt-3.5-turbo", temperature=0.3)
+            logger.info("Using GPT-3.5-turbo as evaluation model")
+            return OpenAIWrapper("gpt-3.5-turbo", temperature=0.3)
         except Exception as e:
-            logger.warning(f"GPT-3.5-turbo 不可用: {e}")
+            logger.warning(f"GPT-3.5-turbo unavailable: {e}")
     
-    raise RuntimeError("没有可用的评估模型")
+    # Fallback: use stub
+    logger.warning("No API keys available, using stub model")
+    from .gemini_wrapper import GeminiWrapper as StubWrapper
+    return StubWrapper()
 
 
 def create_optimizer_agent() -> BaseModelWrapper:
-    """
-    创建优化智能体
-    根据架构：优先使用最新模型
-    """
-    # 优先使用 Claude 3.5 Sonnet（创意/分析强，成本低40%）
-    if os.getenv("ANTHROPIC_API_KEY"):
+    """Create optimizer agent model"""
+    # Priority: use Claude 3.5 Sonnet (strong creativity/analysis, 40% cheaper cost)
+    if ANTHROPIC_AVAILABLE and os.getenv("ANTHROPIC_API_KEY"):
         try:
-            logger.info("使用 Claude 3.5 Sonnet 作为优化模型")
-            return AnthropicWrapper(model_type="claude-3.5-sonnet", temperature=0.5)
+            logger.info("Using Claude 3.5 Sonnet as optimizer model")
+            return AnthropicWrapper("claude-3.5-sonnet", temperature=0.5)
         except Exception as e:
-            logger.warning(f"Claude 3.5 Sonnet 不可用: {e}")
+            logger.warning(f"Claude 3.5 Sonnet unavailable: {e}")
     
-    # 备选：Gemini 2.5 Pro（最新）
-    if os.getenv("GOOGLE_API_KEY"):
+    # Alternative: Gemini 2.5 Pro (latest)
+    if GEMINI_AVAILABLE and os.getenv("GOOGLE_API_KEY"):
         try:
-            logger.info("使用 Gemini 2.5 Pro 作为优化模型")
-            return GeminiWrapper(model_type="pro-2.5", temperature=0.5)
+            logger.info("Using Gemini 2.5 Pro as optimizer model")
+            return GeminiWrapper("pro-2.5", temperature=0.5)
         except Exception as e:
-            logger.warning(f"Gemini 2.5 Pro 不可用: {e}")
+            logger.warning(f"Gemini 2.5 Pro unavailable: {e}")
     
-    # 备选：GPT-4o
-    if os.getenv("OPENAI_API_KEY"):
+    # Alternative: GPT-4o
+    if OPENAI_AVAILABLE and os.getenv("OPENAI_API_KEY"):
         try:
-            logger.info("使用 GPT-4o 作为优化模型")
-            return OpenAIWrapper(model_type="gpt-4o", temperature=0.5)
+            logger.info("Using GPT-4o as optimizer model")
+            return OpenAIWrapper("gpt-4o", temperature=0.5)
         except Exception as e:
-            logger.warning(f"GPT-4o 不可用: {e}")
+            logger.warning(f"GPT-4o unavailable: {e}")
     
-    # 最后选择：Gemini Flash Thinking
-    if os.getenv("GOOGLE_API_KEY"):
+    # Last choice: Gemini Flash Thinking
+    if GEMINI_AVAILABLE and os.getenv("GOOGLE_API_KEY"):
         try:
-            logger.info("使用 Gemini Flash Thinking 作为优化模型")
-            return GeminiWrapper(model_type="flash-thinking", temperature=0.5)
+            logger.info("Using Gemini Flash Thinking as optimizer model")
+            return GeminiWrapper("flash-thinking", temperature=0.5)
         except Exception as e:
-            logger.warning(f"Gemini Flash Thinking 不可用: {e}")
+            logger.warning(f"Gemini Flash Thinking unavailable: {e}")
     
-    raise RuntimeError("没有可用的优化模型")
+    # Fallback: use stub
+    logger.warning("No API keys available, using stub model")
+    from .gemini_wrapper import GeminiWrapper as StubWrapper
+    return StubWrapper()
 
 
-# 辅助函数：打印成本统计
-def print_cost_summary(agents: Dict[str, BaseModelWrapper]):
-    """打印所有agent的成本统计"""
-    total_cost = 0
-    total_tokens = 0
-    
-    logger.info("\n" + "="*50)
-    logger.info("📊 成本统计")
-    logger.info("="*50)
-    
-    for name, agent in agents.items():
-        stats = agent.get_stats()
-        logger.info(f"\n{name}:")
-        logger.info(f"  模型: {stats['model']}")
-        logger.info(f"  Tokens: {stats['total_tokens']:,}")
-        logger.info(f"  成本: ${stats['total_cost']:.4f}")
-        
-        total_cost += stats['total_cost']
-        total_tokens += stats['total_tokens']
-    
-    logger.info(f"\n总计:")
-    logger.info(f"  总Tokens: {total_tokens:,}")
-    logger.info(f"  总成本: ${total_cost:.4f}")
-    logger.info("="*50)
-
-
-if __name__ == "__main__":
-    # 测试代码
-    logger.info("测试模型配置...")
-    
-    # 检查API密钥
-    keys = {
-        "Google": bool(os.getenv("GOOGLE_API_KEY")),
-        "OpenAI": bool(os.getenv("OPENAI_API_KEY")),
-        "Anthropic": bool(os.getenv("ANTHROPIC_API_KEY"))
+def print_cost_summary():
+    """Print cost statistics for all agents"""
+    agents = {
+        "Recommendation": create_recommendation_agent(),
+        "Evaluation": create_evaluation_agent(),
+        "Optimizer": create_optimizer_agent(),
     }
     
-    logger.info("API密钥状态:")
-    for provider, available in keys.items():
-        logger.info(f"  {provider}: {'✅' if available else '❌'}")
+    print("\n💰 Cost Summary by Agent:")
+    print("=" * 50)
     
-    # 测试创建agents
-    agents = {}
+    for name, agent in agents.items():
+        stats = agent.get_usage_stats()
+        print(f"{name:12} | Requests: {stats['total_requests']:3d} | "
+              f"Tokens: {stats['total_tokens']:6d} | Cost: ${stats['total_cost']:.4f}")
     
+    print("=" * 50)
+
+
+# Test code
+if __name__ == "__main__":
+    # Check API keys
+    print("🔍 Checking API key configuration...")
+    api_keys = {
+        "OpenAI": os.getenv("OPENAI_API_KEY"),
+        "Google": os.getenv("GOOGLE_API_KEY"),
+        "Anthropic": os.getenv("ANTHROPIC_API_KEY")
+    }
+    
+    for provider, key in api_keys.items():
+        status = "✅ Configured" if key else "❌ Not configured"
+        print(f"{provider:10}: {status}")
+    
+    # Test creating agents
+    print("\n🧪 Testing agent creation...")
     try:
-        agents["推荐Agent"] = create_recommendation_agent()
-        logger.success("✅ 推荐Agent创建成功")
+        reco_agent = create_recommendation_agent()
+        eval_agent = create_evaluation_agent()
+        opt_agent = create_optimizer_agent()
+        print("✅ All agents created successfully")
     except Exception as e:
-        logger.error(f"❌ 推荐Agent创建失败: {e}")
+        print(f"❌ Agent creation failed: {e}")
     
+    # Simple test
+    print("\n🧪 Testing model generation...")
     try:
-        agents["评估Agent"] = create_evaluation_agent()
-        logger.success("✅ 评估Agent创建成功")
+        agent = create_recommendation_agent()
+        response = agent.generate("Hello, how are you?")
+        print(f"✅ Test response: {response[:50]}...")
     except Exception as e:
-        logger.error(f"❌ 评估Agent创建失败: {e}")
-    
-    try:
-        agents["优化Agent"] = create_optimizer_agent()
-        logger.success("✅ 优化Agent创建成功")
-    except Exception as e:
-        logger.error(f"❌ 优化Agent创建失败: {e}")
-    
-    # 简单测试
-    if agents:
-        logger.info("\n测试生成...")
-        for name, agent in agents.items():
-            try:
-                response = agent.generate("Hello, introduce yourself briefly.")
-                logger.info(f"{name} 响应: {response[:100]}...")
-            except Exception as e:
-                logger.error(f"{name} 测试失败: {e}")
+        print(f"❌ Test failed: {e}")

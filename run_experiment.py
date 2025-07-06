@@ -1,168 +1,193 @@
 #!/usr/bin/env python3
 """
-Sekai Recommendation System - One-Command Experiment Runner
-===========================================================
-
-This script runs a complete experiment with comprehensive logging and analysis.
-It demonstrates the AI-native approach, content understanding, and robust evaluation.
-
-Usage:
-    python run_experiment.py [--cycles N] [--users N] [--mode llm|vector]
+Run Recommendation System Experiment
+Main entry point for running experiments
 """
 
 import argparse
+import json
+import subprocess
 import sys
 from pathlib import Path
-import subprocess
-import json
-from datetime import datetime
+from typing import Dict, Any, List
 
-def run_experiment(cycles=3, users=10, mode="llm", log_dir=None):
-    """运行完整的推荐系统实验"""
+from loguru import logger
+
+
+def run_experiment(
+    cycles: int = 3,
+    users: int = 15,
+    mode: str = "llm",
+    min_delta: float = 0.01,
+    log_dir: str = None,
+    dry_run: bool = False,
+    **kwargs
+) -> Dict[str, Any]:
+    """Run complete recommendation system experiment"""
     
-    if log_dir is None:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_dir = f"logs/experiment_{timestamp}"
-    
-    print(f"🚀 开始 Sekai 推荐系统实验")
-    print(f"📊 参数: {cycles} 轮, {users} 用户/轮, 模式: {mode}")
-    print(f"📁 日志目录: {log_dir}")
-    
-    # 构建命令
+    # Build command
     cmd = [
-        "python", "-m", "src.main",
+        sys.executable, "-m", "src.orchestrator",
         "--cycles", str(cycles),
-        "--sample-users", str(users),
-        "--recall-mode", mode,
-        "--eval-mode", "llm" if mode == "llm" else "keyword",
-        "--log-dir", log_dir
+        "--users", str(users),
+        "--min-delta", str(min_delta),
     ]
     
-    print(f"\n🔧 执行命令: {' '.join(cmd)}")
+    if mode == "vector":
+        cmd.extend(["--recall-mode", "vector", "--eval-mode", "keyword"])
+    elif mode == "llm":
+        cmd.extend(["--recall-mode", "llm", "--eval-mode", "llm"])
+    
+    if log_dir:
+        cmd.extend(["--log-dir", log_dir])
+    
+    if dry_run:
+        cmd.append("--dry-run")
+    
+    # Add additional kwargs
+    for key, value in kwargs.items():
+        if value is not None:
+            cmd.extend([f"--{key.replace('_', '-')}", str(value)])
+    
+    print(f"Running command: {' '.join(cmd)}")
+    
+    # Run experiment
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        print("✅ Experiment completed successfully")
+        return {"success": True, "output": result.stdout}
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Experiment failed: {e}")
+        print(f"Error output: {e.stderr}")
+        return {"success": False, "error": e.stderr}
+
+
+def analyze_results(log_dir: str) -> Dict[str, Any]:
+    """Analyze experiment results"""
+    log_path = Path(log_dir)
+    
+    if not log_path.exists():
+        return {"error": f"Log directory {log_dir} does not exist"}
+    
+    # Read summary.json
+    summary_file = log_path / "summary.json"
+    if not summary_file.exists():
+        return {"error": "summary.json not found"}
     
     try:
-        # 运行实验
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        with open(summary_file, 'r', encoding='utf-8') as f:
+            summary_data = json.load(f)
         
-        if result.returncode == 0:
-            print("✅ 实验完成!")
-            
-            # 分析结果
-            analyze_results(log_dir)
-            
-        else:
-            print(f"❌ 实验失败: {result.stderr}")
-            return False
-            
+        # Calculate statistics
+        if not summary_data:
+            return {"error": "No data in summary.json"}
+        
+        precisions = [cycle.get("precision_at_k", 0) for cycle in summary_data]
+        recalls = [cycle.get("recall_at_k", 0) for cycle in summary_data]
+        
+        analysis = {
+            "total_cycles": len(summary_data),
+            "final_precision": precisions[-1] if precisions else 0,
+            "final_recall": recalls[-1] if recalls else 0,
+            "best_precision": max(precisions) if precisions else 0,
+            "best_recall": max(recalls) if recalls else 0,
+            "improvement": precisions[-1] - precisions[0] if len(precisions) > 1 else 0,
+            "cycles_data": summary_data
+        }
+        
+        return analysis
+        
     except Exception as e:
-        print(f"❌ 运行错误: {e}")
-        return False
-    
-    return True
+        return {"error": f"Failed to analyze results: {e}"}
 
-def analyze_results(log_dir):
-    """分析实验结果"""
-    print(f"\n📈 分析结果: {log_dir}")
-    
-    # 读取 summary.json
-    summary_path = Path(log_dir) / "summary.json"
-    if not summary_path.exists():
-        print("❌ 找不到 summary.json")
+
+def print_results(analysis: Dict[str, Any]):
+    """Print experiment results"""
+    if "error" in analysis:
+        print(f"❌ Analysis failed: {analysis['error']}")
         return
     
-    with open(summary_path, 'r') as f:
-        data = json.load(f)
+    print("\n" + "="*60)
+    print("📊 EXPERIMENT RESULTS")
+    print("="*60)
     
-    print(f"\n📊 实验结果摘要:")
-    print(f"  总轮数: {len(data)}")
+    print(f"Total Cycles: {analysis['total_cycles']}")
+    print(f"Final Precision@10: {analysis['final_precision']:.3f}")
+    print(f"Final Recall@10: {analysis['final_recall']:.3f}")
+    print(f"Best Precision@10: {analysis['best_precision']:.3f}")
+    print(f"Best Recall@10: {analysis['best_recall']:.3f}")
+    print(f"Total Improvement: {analysis['improvement']:+.3f}")
     
-    if data:
-        initial_precision = data[0]['precision_at_k']
-        final_precision = data[-1]['precision_at_k']
-        improvement = final_precision - initial_precision
-        
-        print(f"  初始 Precision@10: {initial_precision:.3f}")
-        print(f"  最终 Precision@10: {final_precision:.3f}")
-        print(f"  改进: {improvement:+.3f}")
-        
-        if initial_precision > 0:
-            print(f"  相对改进: {improvement/initial_precision*100:+.1f}%")
+    # Show per-round results
+    print("\n📈 Per-Round Results:")
+    print("Cycle | Precision@10 | Recall@10 | Strategy")
+    print("------|--------------|-----------|----------")
     
-    # 显示每轮结果
-    print(f"\n📋 详细结果:")
-    print("  轮次 | Precision | Recall | 策略")
-    print("  -----|-----------|--------|------")
-    
-    for cycle in data:
-        print(f"  {cycle['cycle']:2d}    | {cycle['precision_at_k']:.3f}     | {cycle['recall_at_k']:.3f}   | {cycle.get('optimization_strategy', 'N/A')}")
+    for cycle_data in analysis['cycles_data']:
+        cycle = cycle_data.get('cycle', '?')
+        precision = cycle_data.get('precision_at_k', 0)
+        recall = cycle_data.get('recall_at_k', 0)
+        strategy = cycle_data.get('optimization_strategy', 'unknown')
+        print(f"{cycle:5} | {precision:11.3f} | {recall:9.3f} | {strategy}")
+
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Sekai Recommendation System Experiment Runner",
+        description="Run recommendation system experiment",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # 快速测试 (1轮, 5用户)
+  # Quick test (1 cycle, 5 users)
   python run_experiment.py --cycles 1 --users 5
   
-  # 完整实验 (3轮, 15用户, LLM模式)
+  # Full experiment (3 cycles, 15 users, LLM mode)
   python run_experiment.py --cycles 3 --users 15 --mode llm
   
-  # 向量模式实验 (更快, 成本更低)
+  # Vector mode experiment (faster, lower cost)
   python run_experiment.py --cycles 2 --users 10 --mode vector
         """
     )
     
-    parser.add_argument(
-        "--cycles", 
-        type=int, 
-        default=3, 
-        help="实验轮数 (default: 3)"
-    )
-    parser.add_argument(
-        "--users", 
-        type=int, 
-        default=10, 
-        help="每轮用户数 (default: 10)"
-    )
-    parser.add_argument(
-        "--mode", 
-        choices=["llm", "vector"], 
-        default="llm",
-        help="推荐模式 (default: llm)"
-    )
-    parser.add_argument(
-        "--log-dir",
-        type=str,
-        help="自定义日志目录"
-    )
+    parser.add_argument("--cycles", type=int, default=3, help="Number of optimization cycles")
+    parser.add_argument("--users", type=int, default=15, help="Number of users to sample per cycle")
+    parser.add_argument("--mode", choices=["llm", "vector"], default="llm", 
+                       help="Experiment mode: llm (default) or vector")
+    parser.add_argument("--min-delta", type=float, default=0.01, 
+                       help="Minimum improvement threshold for early stopping")
+    parser.add_argument("--log-dir", type=str, help="Custom log directory")
+    parser.add_argument("--dry-run", action="store_true", help="Dry run mode (no API calls)")
+    parser.add_argument("--analyze-only", type=str, help="Only analyze existing results from log directory")
     
     args = parser.parse_args()
     
-    # 检查环境
-    print("🔍 检查环境...")
-    try:
-        import pandas as pd
-        import numpy as np
-        from src.agents.multi_view_recall import MultiViewRecall
-        print("✅ 依赖检查通过")
-    except ImportError as e:
-        print(f"❌ 依赖缺失: {e}")
-        print("请运行: pip install -r requirements.txt")
-        return
+    # Check environment
+    if not Path("data/processed").exists():
+        print("❌ Error: data/processed directory not found")
+        print("Please ensure you have run data preprocessing first")
+        sys.exit(1)
     
-    # 运行实验
-    success = run_experiment(
-        cycles=args.cycles,
-        users=args.users,
-        mode=args.mode,
-        log_dir=args.log_dir
-    )
-    
-    if success:
-        print(f"\n🎉 实验完成! 查看结果: {args.log_dir or 'logs/experiment_*'}")
+    # Run experiment
+    if args.analyze_only:
+        analysis = analyze_results(args.analyze_only)
+        print_results(analysis)
     else:
-        print(f"\n❌ 实验失败，请检查错误信息")
+        result = run_experiment(
+            cycles=args.cycles,
+            users=args.users,
+            mode=args.mode,
+            min_delta=args.min_delta,
+            log_dir=args.log_dir,
+            dry_run=args.dry_run
+        )
+        
+        if result["success"]:
+            # Auto-analyze results
+            if args.log_dir:
+                analysis = analyze_results(args.log_dir)
+                print_results(analysis)
+        else:
+            sys.exit(1)
+
 
 if __name__ == "__main__":
     main() 

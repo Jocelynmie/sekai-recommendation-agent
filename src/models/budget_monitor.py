@@ -1,106 +1,138 @@
 #!/usr/bin/env python
 """
-预算监控模块
-用于跟踪和控制API使用成本
+Budget Monitor
+Tracks and controls API usage costs
 """
 
 import os
 import time
-from typing import Dict, Optional
+from typing import Dict, Any, Optional
 from loguru import logger
+from dataclasses import dataclass, asdict
+import json
+from pathlib import Path
+
+
+@dataclass
+class BudgetConfig:
+    """Budget configuration"""
+    total_budget: float = 10.0  # Total budget in USD
+    warning_threshold: float = 0.8  # Warning at 80% of budget
+    hard_limit: float = 1.0  # Hard stop at 100% of budget
+
+
+@dataclass
+class BudgetStats:
+    """Budget statistics"""
+    total_tokens: int = 0
+    total_cost: float = 0.0
+    requests_count: int = 0
+    last_reset: float = 0.0
 
 
 class BudgetMonitor:
-    """预算监控器"""
+    """Budget monitor"""
     
-    def __init__(self, hard_limit: Optional[float] = None):
+    def __init__(self, config: Optional[BudgetConfig] = None):
         """
-        初始化预算监控器
+        Initialize budget monitor
         
         Args:
-            hard_limit: 硬限制（美元），None表示从环境变量读取
+            config: Budget configuration, None to use default
         """
-        self.hard_limit = hard_limit or float(os.getenv("OPENAI_BILLING_HARD_LIMIT", "50.00"))
-        self.current_cost = 0.0
-        self.start_time = time.time()
-        self.cost_history = []
+        self.config = config or BudgetConfig()
+        self.stats = BudgetStats()
+        self.stats.last_reset = time.time()
         
-        logger.info(f"💰 预算监控初始化: 硬限制=${self.hard_limit}")
+        # Create logs directory
+        self.log_dir = Path("logs")
+        self.log_dir.mkdir(exist_ok=True)
+        self.log_file = self.log_dir / "budget_log.jsonl"
+        
+        logger.info(f"💰 Budget monitor initialized: Hard limit=${self.config.hard_limit}")
     
-    def add_cost(self, cost: float, model_name: str = "unknown") -> bool:
-        """
-        添加成本并检查是否超限
-        
-        Args:
-            cost: 新增成本（美元）
-            model_name: 模型名称
-            
-        Returns:
-            bool: True表示可以继续，False表示已超限
-        """
-        self.current_cost += cost
-        self.cost_history.append({
-            "timestamp": time.time(),
-            "cost": cost,
-            "model": model_name,
-            "total": self.current_cost
-        })
-        
-        # 检查硬限制
-        if self.current_cost >= self.hard_limit:
-            logger.error(f"🚨 预算超限! 当前: ${self.current_cost:.4f}, 限制: ${self.hard_limit}")
+    def check_budget(self, estimated_cost: float = 0.0) -> bool:
+        """Check if request is within budget"""
+        # Check hard limit
+        if self.stats.total_cost + estimated_cost > self.config.total_budget * self.config.hard_limit:
+            logger.error(f"🚨 Budget exceeded! Current: ${self.stats.total_cost:.4f}, Limit: ${self.config.total_budget * self.config.hard_limit}")
             return False
         
-        # 检查警告阈值（80%）
-        warning_threshold = self.hard_limit * 0.8
-        if self.current_cost >= warning_threshold:
-            logger.warning(f"⚠️ 预算警告: ${self.current_cost:.4f}/{self.hard_limit} "
-                          f"({self.current_cost/self.hard_limit*100:.1f}%)")
-        else:
-            logger.info(f"💰 成本更新: +${cost:.6f} ({model_name}), "
-                       f"总计: ${self.current_cost:.4f}/{self.hard_limit}")
+        # Check warning threshold (80%)
+        if self.stats.total_cost > self.config.total_budget * self.config.warning_threshold:
+            logger.warning(f"⚠️ Budget warning: ${self.stats.total_cost:.4f}/{self.config.total_budget:.2f} USD used")
         
         return True
-    
-    def get_stats(self) -> Dict:
-        """获取预算统计"""
-        runtime = time.time() - self.start_time
-        return {
-            "current_cost": self.current_cost,
-            "hard_limit": self.hard_limit,
-            "remaining": self.hard_limit - self.current_cost,
-            "usage_percent": (self.current_cost / self.hard_limit) * 100,
-            "runtime_hours": runtime / 3600,
-            "cost_per_hour": self.current_cost / (runtime / 3600) if runtime > 0 else 0,
-            "total_requests": len(self.cost_history)
+
+    def record_usage(self, tokens: int, cost: float):
+        """Record API usage"""
+        self.stats.total_tokens += tokens
+        self.stats.total_cost += cost
+        self.stats.requests_count += 1
+        
+        # Log usage
+        self._log_usage(tokens, cost)
+
+    def _log_usage(self, tokens: int, cost: float):
+        """Log usage to file"""
+        log_entry = {
+            "timestamp": time.time(),
+            "tokens": tokens,
+            "cost": cost,
+            "total_tokens": self.stats.total_tokens,
+            "total_cost": self.stats.total_cost,
+            "requests_count": self.stats.requests_count
         }
-    
-    def print_summary(self):
-        """打印预算摘要"""
-        stats = self.get_stats()
-        logger.info("📊 预算摘要:")
-        logger.info(f"  当前成本: ${stats['current_cost']:.4f}")
-        logger.info(f"  硬限制: ${stats['hard_limit']:.2f}")
-        logger.info(f"  剩余预算: ${stats['remaining']:.4f}")
-        logger.info(f"  使用率: {stats['usage_percent']:.1f}%")
-        logger.info(f"  运行时间: {stats['runtime_hours']:.2f}小时")
-        logger.info(f"  每小时成本: ${stats['cost_per_hour']:.4f}")
-        logger.info(f"  总请求数: {stats['total_requests']}")
+        
+        with open(self.log_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(log_entry, ensure_ascii=False) + "\n")
+
+    def get_budget_stats(self) -> Dict[str, Any]:
+        """Get budget statistics"""
+        runtime = time.time() - self.stats.last_reset
+        return {
+            "total_tokens": self.stats.total_tokens,
+            "total_cost": self.stats.total_cost,
+            "requests_count": self.stats.requests_count,
+            "budget_used": self.stats.total_cost / self.config.total_budget,
+            "budget_remaining": self.config.total_budget - self.stats.total_cost,
+            "last_reset": self.stats.last_reset,
+            "runtime_hours": runtime / 3600,
+            "cost_per_hour": self.stats.total_cost / (runtime / 3600) if runtime > 0 else 0
+        }
+
+    def print_cost_summary(self):
+        """Print budget summary"""
+        stats = self.get_budget_stats()
+        logger.info("📊 Budget Summary:")
+        logger.info(f"   Total Tokens: {stats['total_tokens']:,}")
+        logger.info(f"   Total Cost: ${stats['total_cost']:.4f}")
+        logger.info(f"   Requests: {stats['requests_count']}")
+        logger.info(f"   Budget Used: {stats['budget_used']:.1%}")
+        logger.info(f"   Budget Remaining: ${stats['budget_remaining']:.2f}")
+        logger.info(f"   Runtime: {stats['runtime_hours']:.2f} hours")
+        logger.info(f"   Cost per hour: ${stats['cost_per_hour']:.4f}")
+
+    def reset_budget(self):
+        """Reset budget statistics"""
+        self.stats = BudgetStats()
+        self.stats.last_reset = time.time()
+        logger.info("🔄 Budget statistics reset")
 
 
-# 全局预算监控器实例
-_global_monitor: Optional[BudgetMonitor] = None
+# Global budget monitor instance
+_global_budget_monitor: Optional[BudgetMonitor] = None
 
 
-def get_budget_monitor() -> BudgetMonitor:
-    """获取全局预算监控器"""
-    global _global_monitor
-    if _global_monitor is None:
-        _global_monitor = BudgetMonitor()
-    return _global_monitor
+def get_global_budget_monitor() -> BudgetMonitor:
+    """Get global budget monitor"""
+    global _global_budget_monitor
+    if _global_budget_monitor is None:
+        _global_budget_monitor = BudgetMonitor()
+    return _global_budget_monitor
 
 
-def reset_budget_monitor():
-    """重置全局预算监控器"""
-    global _global_monitor
-    _global_monitor = None 
+def reset_global_budget_monitor():
+    """Reset global budget monitor"""
+    global _global_budget_monitor
+    _global_budget_monitor = None 
