@@ -1,0 +1,34 @@
+{
+  "timestamp": "2025-07-04T20:55:00.913004",
+  "input": {
+    "user_tags": [
+      "chainsaw man",
+      "humiliation",
+      "submissive protagonist",
+      "voyeurism",
+      "explicit fantasies",
+      "psychological manipulation",
+      "forced confession"
+    ],
+    "k": 10
+  },
+  "output": {
+    "content_ids": [
+      259590,
+      262505,
+      244240,
+      274518,
+      285168,
+      420753,
+      241246,
+      310092,
+      286182,
+      345293
+    ],
+    "prompt_tokens": 301,
+    "model_tokens": 108,
+    "model_used": "gemini-2.0-flash-exp",
+    "reasoning": null,
+    "method_used": "llm_rerank"
+  }
+}

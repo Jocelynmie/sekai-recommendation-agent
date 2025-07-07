@@ -29,9 +29,9 @@ ehthumbs.db
 Thumbs.db
 
 # Logs and cache
-logs/*/
+# logs/*/
 cache/
-*.log
+# *.log
 
 # Data files (if large)
 data/raw/

@@ -25,6 +25,8 @@ A sophisticated recommendation system that leverages the latest LLMs and AI fram
 | 2     | **0.760** | **0.760** | +0.220    |
 
 > **Best Prompt**: v2.0 (Cycle 2) – +90% precision gain.
+Experimental Run with GPT-4 
+Selected GPT-4 as a unified backup due to token cost and quota.
 
 ---
 
@@ -70,18 +72,18 @@ Key dependencies:
     ▼  │
 ┌────────────────────────┐
 │   A/B Router & Guard   │◀── BudgetMonitor ──┐
-└───────┬────────┬───────┘                  │
-        │        │                          │
-        │latency │fallback                  │cost
-        ▼        ▼                          │
-┌──────────────┐  ┌─────────────────┐       │
-│ Vector Store │  │ Multi‑View      │       │
-│  (FAISS)     │  │  Recall System  │       │
-└─────┬────────┘  └────────┬────────┘       │
-      │ candidates         │                │
-      ▼                    ▼                │
-┌──────────────────┐   ┌──────────────────┐  │
-│ Recommendation   │   │  Policy Guard    │──┘
+└───────┬────────┬───────┘                    │
+        │        │                            │
+        │latency │fallback                    │cost
+        ▼        ▼                            │
+┌──────────────┐  ┌─────────────────┐         │
+│ Vector Store │  │ Multi‑View      │         │
+│  (FAISS)     │  │  Recall System  │         │
+└─────┬────────┘  └────────┬────────┘         │
+      │ candidates         │                  │
+      ▼                    ▼                  │
+┌──────────────────┐   ┌──────────────────┐   │
+│ Recommendation   │   │  Policy Guard    │───┘
 │  Agent (LLM)     │   │  (safety/fair)   │
 └────────┬─────────┘   └────────┬─────────┘
          │ ranked               │filtered

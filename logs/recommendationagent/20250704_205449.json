@@ -1,0 +1,34 @@
+{
+  "timestamp": "2025-07-04T20:54:49.648589",
+  "input": {
+    "user_tags": [
+      "my hero academia",
+      "multiple love interests",
+      "hiding in plain sight",
+      "hidden feelings",
+      "married couple",
+      "protective brother",
+      "yandere"
+    ],
+    "k": 10
+  },
+  "output": {
+    "content_ids": [
+      260778,
+      272290,
+      261755,
+      259759,
+      289603,
+      259590,
+      287137,
+      276580,
+      277491,
+      275154
+    ],
+    "prompt_tokens": 305,
+    "model_tokens": 108,
+    "model_used": "gemini-2.0-flash-exp",
+    "reasoning": null,
+    "method_used": "llm_rerank"
+  }
+}

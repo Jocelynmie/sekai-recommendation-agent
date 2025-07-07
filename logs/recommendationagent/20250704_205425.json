@@ -1,0 +1,34 @@
+{
+  "timestamp": "2025-07-04T20:54:25.181168",
+  "input": {
+    "user_tags": [
+      "naruto",
+      "fatebreaker",
+      "timeline alteration",
+      "feared by authority figures",
+      "unique aura",
+      "jiraiya interest",
+      "overpowered protagonist"
+    ],
+    "k": 10
+  },
+  "output": {
+    "content_ids": [
+      262966,
+      344973,
+      296357,
+      283957,
+      331877,
+      240682,
+      294445,
+      281420,
+      528015,
+      213987
+    ],
+    "prompt_tokens": 303,
+    "model_tokens": 97,
+    "model_used": "gemini-2.0-flash-exp",
+    "reasoning": null,
+    "method_used": "llm_rerank"
+  }
+}

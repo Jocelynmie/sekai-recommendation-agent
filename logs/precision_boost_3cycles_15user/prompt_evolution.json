@@ -1,0 +1,62 @@
+[
+  {
+    "cycle": 0,
+    "timestamp": "2025-07-03T17:53:22.500730",
+    "prompt": "You are an assistant that re‑orders story IDs for relevance.\nInput user tags: {tags}\nCandidate IDs (most relevant first): {ids}\nReturn exactly {k} IDs as a JSON array, no text.",
+    "metrics": {
+      "precision_at_k": 0.5733333333333334,
+      "recall_at_k": 0.5733333333333334,
+      "std_precision": 0.17915143899851346,
+      "std_recall": 0.17915143899851346
+    },
+    "rationale": "Baseline evaluation, no optimization.",
+    "is_updated": false,
+    "optimization_strategy": "baseline",
+    "version": "v0.0"
+  },
+  {
+    "cycle": 1,
+    "timestamp": "2025-07-03T17:53:37.055705",
+    "prompt": "You are an assistant that re‑orders story IDs for relevance.\nInput user tags: {tags}\nCandidate IDs (most relevant first): {ids}\nReturn exactly {k} IDs as a JSON array, no text.",
+    "metrics": {
+      "precision_at_k": 0.6466666666666666,
+      "recall_at_k": 0.6466666666666666,
+      "std_precision": 0.09904304018720252,
+      "std_recall": 0.09904304018720252
+    },
+    "rationale": "Need ≥2 cycles, got 1.",
+    "is_updated": false,
+    "optimization_strategy": "insufficient_history",
+    "version": "v1.0"
+  },
+  {
+    "cycle": 2,
+    "timestamp": "2025-07-03T17:53:52.729195",
+    "prompt": "# v1\n# Strategy: exploit\nYou are a recommendation engine for role‑play stories. Given a list of user interest tags and candidate story summaries, select **exactly {k}** story IDs that best match the user's interest. Respond strictly as a JSON list of integers.\n\n### Performance Summary\n- Current mean precision ≈ 0.610\n- Current mean recall ≈ 0.610\n- Δ precision vs prev ≈ 0.000\n- Δ recall vs prev ≈ 0.000",
+    "metrics": {
+      "precision_at_k": 0.6999999999999998,
+      "recall_at_k": 0.6999999999999998,
+      "std_precision": 0.14638501094227999,
+      "std_recall": 0.14638501094227999
+    },
+    "rationale": "Exploit: expected_gain=0.434 >= min_delta=0.010",
+    "is_updated": true,
+    "optimization_strategy": "exploit",
+    "version": "v2.0"
+  },
+  {
+    "cycle": 3,
+    "timestamp": "2025-07-03T17:53:54.021581",
+    "prompt": "# v2\n# Strategy: exploit\nYou are a recommendation engine for role‑play stories. Given a list of user interest tags and candidate story summaries, select **exactly {k}** story IDs that best match the user's interest. Respond strictly as a JSON list of integers.\n\n### Performance Summary\n- Current mean precision ≈ 0.640\n- Current mean recall ≈ 0.640\n- Δ precision vs prev ≈ 0.000\n- Δ recall vs prev ≈ 0.000",
+    "metrics": {
+      "precision_at_k": 0.8599999999999999,
+      "recall_at_k": 0.8599999999999999,
+      "std_precision": 0.16818357317441646,
+      "std_recall": 0.16818357317441646
+    },
+    "rationale": "Exploit: expected_gain=0.458 >= min_delta=0.010",
+    "is_updated": true,
+    "optimization_strategy": "exploit",
+    "version": "v3.0"
+  }
+]

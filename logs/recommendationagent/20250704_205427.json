@@ -1,0 +1,34 @@
+{
+  "timestamp": "2025-07-04T20:54:27.634336",
+  "input": {
+    "user_tags": [
+      "my hero academia",
+      "step siblings",
+      "aggressive behavior",
+      "enemies to lovers",
+      "hidden feelings",
+      "tsundere",
+      "blushing"
+    ],
+    "k": 10
+  },
+  "output": {
+    "content_ids": [
+      289603,
+      316417,
+      213977,
+      262505,
+      273047,
+      266539,
+      258222,
+      370717,
+      325810,
+      258255
+    ],
+    "prompt_tokens": 302,
+    "model_tokens": 108,
+    "model_used": "gemini-2.0-flash-exp",
+    "reasoning": null,
+    "method_used": "llm_rerank"
+  }
+}

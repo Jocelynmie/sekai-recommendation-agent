@@ -1,0 +1,34 @@
+{
+  "timestamp": "2025-07-04T20:54:39.441273",
+  "input": {
+    "user_tags": [
+      "my hero academia",
+      "dragon ball",
+      "naruto",
+      "reverse harem",
+      "multiple love interests",
+      "submissive admirers",
+      "k-pop fan"
+    ],
+    "k": 10
+  },
+  "output": {
+    "content_ids": [
+      276580,
+      213977,
+      316417,
+      254779,
+      322939,
+      280223,
+      247339,
+      438451,
+      354024,
+      306969
+    ],
+    "prompt_tokens": 305,
+    "model_tokens": 97,
+    "model_used": "gemini-2.0-flash-exp",
+    "reasoning": null,
+    "method_used": "llm_rerank"
+  }
+}

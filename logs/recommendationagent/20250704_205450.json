@@ -1,0 +1,34 @@
+{
+  "timestamp": "2025-07-04T20:54:50.868806",
+  "input": {
+    "user_tags": [
+      "original character",
+      "bts",
+      "my hero academia",
+      "ip: bts",
+      "ip(bts)",
+      "blackpink",
+      "five nights at freddy's"
+    ],
+    "k": 10
+  },
+  "output": {
+    "content_ids": [
+      222045,
+      242725,
+      313612,
+      266539,
+      262966,
+      277491,
+      299582,
+      420753,
+      470970,
+      374067
+    ],
+    "prompt_tokens": 309,
+    "model_tokens": 97,
+    "model_used": "gemini-2.0-flash-exp",
+    "reasoning": null,
+    "method_used": "llm_rerank"
+  }
+}

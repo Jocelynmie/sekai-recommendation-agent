@@ -1,0 +1,34 @@
+{
+  "timestamp": "2025-07-04T20:54:56.488358",
+  "input": {
+    "user_tags": [
+      "dragon ball",
+      "dragon ball/z and jujutsu kaisen",
+      "naruto",
+      "crossover",
+      "one punch man",
+      "isekai",
+      "my hero academia"
+    ],
+    "k": 10
+  },
+  "output": {
+    "content_ids": [
+      296357,
+      277491,
+      323678,
+      262966,
+      427944,
+      371951,
+      282179,
+      275753,
+      321510,
+      242725
+    ],
+    "prompt_tokens": 309,
+    "model_tokens": 97,
+    "model_used": "gemini-2.0-flash-exp",
+    "reasoning": null,
+    "method_used": "llm_rerank"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "timestamp": "2025-07-04T20:54:48.435487",
+  "input": {
+    "user_tags": [
+      "my hero academia",
+      "jujutsu kaisen",
+      "demon slayer",
+      "naruto",
+      "genshin impact",
+      "hazbin hotel",
+      "blindfold"
+    ],
+    "k": 10
+  },
+  "output": {
+    "content_ids": [
+      294445,
+      323678,
+      262966,
+      277491,
+      242725,
+      282179,
+      528015,
+      292956,
+      239809,
+      296357
+    ],
+    "prompt_tokens": 305,
+    "model_tokens": 97,
+    "model_used": "gemini-2.0-flash-exp",
+    "reasoning": null,
+    "method_used": "llm_rerank"
+  }
+}

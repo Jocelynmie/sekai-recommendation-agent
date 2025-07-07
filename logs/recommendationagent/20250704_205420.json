@@ -1,0 +1,34 @@
+{
+  "timestamp": "2025-07-04T20:54:20.563459",
+  "input": {
+    "user_tags": [
+      "high school dxd",
+      "supernatural",
+      "murder drones",
+      "demon slayer: kimetsu no yaiba",
+      "solo leveling",
+      "my hero academia/demon slayer",
+      "naruto"
+    ],
+    "k": 10
+  },
+  "output": {
+    "content_ids": [
+      331877,
+      277491,
+      323678,
+      242725,
+      213987,
+      340067,
+      260778,
+      262966,
+      263282,
+      427944
+    ],
+    "prompt_tokens": 311,
+    "model_tokens": 97,
+    "model_used": "gemini-2.0-flash-exp",
+    "reasoning": null,
+    "method_used": "llm_rerank"
+  }
+}

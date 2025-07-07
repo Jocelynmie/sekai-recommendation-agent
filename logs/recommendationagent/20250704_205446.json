@@ -1,0 +1,34 @@
+{
+  "timestamp": "2025-07-04T20:54:46.149238",
+  "input": {
+    "user_tags": [
+      "high school dxd",
+      "fairy tail",
+      "my hero academia",
+      "one piece",
+      "vore",
+      "possessive",
+      "multiple partners"
+    ],
+    "k": 10
+  },
+  "output": {
+    "content_ids": [
+      316417,
+      280223,
+      491205,
+      275748,
+      418216,
+      231229,
+      276580,
+      247339,
+      310092,
+      537019
+    ],
+    "prompt_tokens": 303,
+    "model_tokens": 97,
+    "model_used": "gemini-2.0-flash-exp",
+    "reasoning": null,
+    "method_used": "llm_rerank"
+  }
+}

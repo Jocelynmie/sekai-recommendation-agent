@@ -1,0 +1,34 @@
+{
+  "timestamp": "2025-07-04T20:54:55.661923",
+  "input": {
+    "user_tags": [
+      "distant",
+      "turkish language only",
+      "chaos sorceress",
+      "self-insert",
+      "tenderness",
+      "harem",
+      "seduction"
+    ],
+    "k": 10
+  },
+  "output": {
+    "content_ids": [
+      491205,
+      335468,
+      241788,
+      401946,
+      234349,
+      247339,
+      383191,
+      274518,
+      262940,
+      257984
+    ],
+    "prompt_tokens": 301,
+    "model_tokens": 108,
+    "model_used": "gemini-2.0-flash-exp",
+    "reasoning": null,
+    "method_used": "llm_rerank"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "timestamp": "2025-07-04T20:54:37.402360",
+  "input": {
+    "user_tags": [
+      "one piece",
+      "my hero academia",
+      "naruto",
+      "pokémon",
+      "harem",
+      "reverse harem",
+      "male protagonist"
+    ],
+    "k": 10
+  },
+  "output": {
+    "content_ids": [
+      214254,
+      371951,
+      262966,
+      277491,
+      247222,
+      321510,
+      247339,
+      537019,
+      406424,
+      354024
+    ],
+    "prompt_tokens": 300,
+    "model_tokens": 97,
+    "model_used": "gemini-2.0-flash-exp",
+    "reasoning": null,
+    "method_used": "llm_rerank"
+  }
+}

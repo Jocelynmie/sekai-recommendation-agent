@@ -1,0 +1,34 @@
+{
+  "timestamp": "2025-07-04T20:54:22.109286",
+  "input": {
+    "user_tags": [
+      "five nights in anime / naruto",
+      "five nights in anime",
+      "naruto",
+      "crossover",
+      "chainsaw man",
+      "bleach",
+      "genshin impact"
+    ],
+    "k": 10
+  },
+  "output": {
+    "content_ids": [
+      406424,
+      294445,
+      232199,
+      213987,
+      292956,
+      371951,
+      306969,
+      326111,
+      310092,
+      262966
+    ],
+    "prompt_tokens": 306,
+    "model_tokens": 97,
+    "model_used": "gemini-2.0-flash-exp",
+    "reasoning": null,
+    "method_used": "llm_rerank"
+  }
+}

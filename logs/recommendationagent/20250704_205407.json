@@ -1,0 +1,34 @@
+{
+  "timestamp": "2025-07-04T20:54:07.941332",
+  "input": {
+    "user_tags": [
+      "bungou stray dogs",
+      "naruto",
+      "power fantasy",
+      "secret crush",
+      "tsundere",
+      "self-destructive",
+      "stockholm syndrome"
+    ],
+    "k": 10
+  },
+  "output": {
+    "content_ids": [
+      331612,
+      283957,
+      294445,
+      371951,
+      347484,
+      306830,
+      262966,
+      317679,
+      213987,
+      281888
+    ],
+    "prompt_tokens": 305,
+    "model_tokens": 97,
+    "model_used": "gemini-2.0-flash-exp",
+    "reasoning": null,
+    "method_used": "llm_rerank"
+  }
+}

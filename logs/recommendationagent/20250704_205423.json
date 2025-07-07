@@ -1,0 +1,34 @@
+{
+  "timestamp": "2025-07-04T20:54:23.745657",
+  "input": {
+    "user_tags": [
+      "roblox",
+      "my hero academia/demon slayer/jujutsu kaisen (crossover)",
+      "my hero academia",
+      "doki doki literature club",
+      "my hero academia/demon slayer",
+      "female",
+      "web developer"
+    ],
+    "k": 10
+  },
+  "output": {
+    "content_ids": [
+      323678,
+      331877,
+      260778,
+      242725,
+      314562,
+      262966,
+      277491,
+      316556,
+      354024,
+      540104
+    ],
+    "prompt_tokens": 321,
+    "model_tokens": 97,
+    "model_used": "gemini-2.0-flash-exp",
+    "reasoning": null,
+    "method_used": "llm_rerank"
+  }
+}

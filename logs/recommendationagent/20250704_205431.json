@@ -1,0 +1,34 @@
+{
+  "timestamp": "2025-07-04T20:54:31.394103",
+  "input": {
+    "user_tags": [
+      "girlfriend",
+      "romance",
+      "movies tv",
+      "anime",
+      "school",
+      "love triangle",
+      "hazbin hotel"
+    ],
+    "k": 10
+  },
+  "output": {
+    "content_ids": [
+      232199,
+      234349,
+      247339,
+      256859,
+      259986,
+      270848,
+      286182,
+      294445,
+      306969,
+      406424
+    ],
+    "prompt_tokens": 297,
+    "model_tokens": 97,
+    "model_used": "gemini-2.0-flash-exp",
+    "reasoning": null,
+    "method_used": "llm_rerank"
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "timestamp": "2025-07-04T20:54:41.386159",
+  "input": {
+    "user_tags": [
+      "genshin impact",
+      "isekai",
+      "pokémon",
+      "fairy tail",
+      "doki doki literature club",
+      "infinite stratos",
+      "tokyo revengers"
+    ],
+    "k": 10
+  },
+  "output": {
+    "content_ids": [
+      371951,
+      427944,
+      354024,
+      528015,
+      331877,
+      282179,
+      340067,
+      247222,
+      262966,
+      321510
+    ],
+    "prompt_tokens": 309,
+    "model_tokens": 97,
+    "model_used": "gemini-2.0-flash-exp",
+    "reasoning": null,
+    "method_used": "llm_rerank"
+  }
+}
