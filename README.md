@@ -2,6 +2,8 @@
 
 > **AI-Native & Cutting-Edge Recommendation System for Role-Play Stories**
 
+Video Link: https://youtu.be/1XTIP0m3AVU
+
 A sophisticated recommendation system that leverages the latest LLMs and AI frameworks to provide personalized story recommendations for Sekai users. This project demonstrates deep content understanding, advanced prompt engineering, and robust evaluation methodologies.
 
 

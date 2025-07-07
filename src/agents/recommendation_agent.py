@@ -2,7 +2,7 @@
 Recommendation Agent
 ────────────────────
 • 接收用户勾选的兴趣 `tags`，返回 K 个最相关的 `content_id`
-• 首要指标：**速度**（默认使用 Gemini‑2 Flash 或同等速模型）
+• 首要指标：**速度*
 
 功能要点
 1. system_prompt / user_prompt 拆分，节省 token
