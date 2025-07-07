@@ -22,13 +22,13 @@ A sophisticated recommendation system that leverages the latest LLMs and AI fram
 
 | Cycle | P@10      | R@10      | Δ vs prev |
 | ----- | --------- | --------- | --------- |
-| 0     | 0.400     | 0.400     | —         |
-| 1     | 0.540     | 0.540     | +0.140    |
-| 2     | **0.760** | **0.760** | +0.220    |
+| 0     | 0.573     | 0.573     | —         |
+| 1     | 0.647     | 0.647     | +0.073    |
+| 2     | 0.700     | 0.700     | +0.053    |
+| 3     | **0.860** | **0.860** | +0.160    |
 
-> **Best Prompt**: v2.0 (Cycle 2) – +90% precision gain.
-Experimental Run with GPT-4 
-Selected GPT-4 as a unified backup due to token cost and quota.
+> **Best Performance**: Cycle 3 – +50% precision gain (0.573 → 0.860).
+Experimental Run with GPT-4o for recommendation reranking and evaluation.
 
 ---
 
@@ -56,10 +56,10 @@ pip install -r requirements.txt
 Key dependencies:
 
 - **LLM APIs**: `google-generativeai` / `openai` / `anthropic`
-- **向量和搜索**: `sentence-transformers` / `faiss-cpu` / `whoosh`
-- **数据处理**: `pandas` / `numpy`
-- **日志和配置**: `loguru` / `python-dotenv`
-- **工具类**: `tqdm`
+- **Vector & Search**: `sentence-transformers` / `faiss-cpu` / `whoosh`
+- **Data Processing**: `pandas` / `numpy`
+- **Logging & Config**: `loguru` / `python-dotenv`
+- **Utilities**: `tqdm`
 
 ---
 
@@ -116,6 +116,14 @@ Key dependencies:
 - **Evaluation Agent**: Continuously evaluates recommendation quality and logs metrics.
 - **Prompt Optimizer**: Dynamically updates prompts and strategies based on evaluation feedback.
 - **BudgetMonitor**: Monitors and controls API usage and cost.
+
+Why not LangGraph?
+
+1️⃣ Task simplicity — our optimisation loop is linear, no branching DAG required.
+2️⃣ Performance — writing the loop myself strips away framework overhead and cold‑start latency.
+3️⃣ Maintainability — 50 lines of explicit Python are easier to debug than a hidden state machine.
+4️⃣ Extensibility — my BaseAgent mix‑in lets us drop new agents in with two methods.
+If we ever need complex fan‑out workflows or dynamic routing, migrating to LangGraph would be a natural next step. For now, custom code is the leanest choice
 
 ---
 
