@@ -2,7 +2,6 @@
 
 > **AI-Native & Cutting-Edge Recommendation System for Role-Play Stories**
 
-Video Link: https://youtu.be/1XTIP0m3AVU
 
 A sophisticated recommendation system that leverages the latest LLMs and AI frameworks to provide personalized story recommendations for Sekai users. This project demonstrates deep content understanding, advanced prompt engineering, and robust evaluation methodologies.
 
@@ -240,15 +239,7 @@ See [`prompt_strategy_templates.md`](./prompt_strategy_templates.md) for referen
 - Cold‑start weighting & tag‑upweight logic reflected in `RecommendationAgent._score_candidates()`.
 - Diversity enhancement and evaluation prompts mirror the templates, but **are embedded as Python string constants**, not imported from the Markdown file.
 
----
-
-## 📄 License
 
 
-This is a technical assessment project. For production use, please contact the Sekai team.
-
----
-
-**Built with ❤️ for the Sekai community**
 
 ---
